@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 自定义样式 */
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-lg shadow-card hover:shadow-card-hover transition-shadow duration-300;
+  }
+  
+  .btn-primary {
+    @apply bg-primary-500 hover:bg-primary-600 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 px-4 rounded-md transition-colors duration-200;
+  }
+  
+  .sidebar-item {
+    @apply flex items-center px-4 py-3 mx-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors duration-200 cursor-pointer;
+  }
+  
+  .sidebar-item.active {
+    @apply bg-primary-500 text-white hover:bg-primary-600;
+  }
+  
+  .sidebar-item .material-icons {
+    @apply mr-3 text-xl;
+  }
+}
+
+/* Element Plus 自定义样式 */
+.el-menu {
+  border: none !important;
+}
+
+.el-menu-item.is-active {
+  background-color: #0ea5e9 !important;
+  color: white !important;
+}
+
+.el-menu-item:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.el-menu-item.is-active:hover {
+  background-color: #0284c7 !important;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .mobile-hidden {
+    display: none !important;
+  }
+  
+  .mobile-full-width {
+    width: 100% !important;
+  }
+}

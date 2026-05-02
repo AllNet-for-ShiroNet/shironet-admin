@@ -207,8 +207,7 @@ export function getAccessibleMenuItems(userRole: string): RouteRecordRaw[] {
 }
 
 // 添加全局错误处理
-router.onError((error) => {
-  console.error('Router error:', error)
+router.onError(() => {
   ElMessage.error('路由加载失败')
 })
 
@@ -217,22 +216,14 @@ router.beforeEach(async (to, from, next) => {
   try {
     const authStore = useAuthStore()
     
-    // 初始化认证状态
-    if (!authStore.user && authStore.accessToken) {
+    // 有访问令牌时对 profile 做一次校验（user 可能已从缓存 hydrate，不能只依赖「!user」触发）
+    if (authStore.accessToken) {
       await authStore.initAuth()
     }
     
     const requiresAuth = to.meta?.requiresAuth !== false
     const isAuthenticated = authStore.isAuthenticated
     const userRole = authStore.user?.role || ''
-    
-    console.log('路由守卫检查:', {
-      path: to.path,
-      requiresAuth,
-      isAuthenticated,
-      userRole,
-      allowedRoles: to.meta?.allowedRoles
-    })
 
     // 检查是否需要认证
     if (requiresAuth && !isAuthenticated) {
@@ -252,7 +243,6 @@ router.beforeEach(async (to, from, next) => {
       const allowedRoles = to.meta?.allowedRoles as string[] | undefined
       
       if (!hasPermission(userRole, allowedRoles)) {
-        console.warn('权限不足:', { userRole, allowedRoles, path: to.path })
         ElMessage.error('权限不足，无法访问该页面')
         next('/dashboard')
         return
@@ -265,24 +255,15 @@ router.beforeEach(async (to, from, next) => {
     }
 
     next()
-  } catch (error) {
-    console.error('Navigation error:', error)
+  } catch {
     ElMessage.error('页面导航失败')
     next(false)
   }
 })
 
 // 后置守卫 - 用于页面加载完成后的处理
-router.afterEach((to) => {
-  // 滚动到页面顶部
+router.afterEach(() => {
   window.scrollTo(0, 0)
-  
-  // 记录页面访问日志（可选）
-  console.log('页面访问:', {
-    path: to.path,
-    name: to.name,
-    title: to.meta?.title
-  })
 })
 
 export default router

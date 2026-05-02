@@ -114,7 +114,11 @@
           <div class="p-4">
             <!-- 头部：选择框 + 标题 + 状态 -->
             <div class="flex items-start space-x-3 mb-3">
-              <el-checkbox v-model="selectedAnnouncements" :label="announcement.id" class="mt-1" />
+              <el-checkbox
+                class="mt-1"
+                :model-value="isAnnouncementSelected(announcement.id)"
+                @change="onAnnouncementCheckChange(announcement.id, $event)"
+              />
               <div class="flex-1 min-w-0">
                 <div class="flex items-start justify-between mb-2">
                   <h3 :class="[
@@ -287,7 +291,7 @@
           :page-sizes="[10, 20, 50]"
           :total="total"
           layout="sizes, prev, pager, next"
-          small
+          size="small"
           background
         />
       </div>
@@ -335,7 +339,10 @@
             >
               <!-- 选择框 -->
               <td class="px-4 py-3">
-                <el-checkbox v-model="selectedAnnouncements" :label="announcement.id" />
+                <el-checkbox
+                  :model-value="isAnnouncementSelected(announcement.id)"
+                  @change="onAnnouncementCheckChange(announcement.id, $event)"
+                />
               </td>
               
               <!-- 置顶 -->
@@ -494,7 +501,7 @@
           :page-sizes="[10, 20, 50]"
           :total="total"
           layout="sizes, prev, pager, next"
-          small
+          size="small"
           background
         />
       </div>
@@ -884,10 +891,33 @@ const getStatusColor = (status: string) => dataTransform.getStatusColor(status)
 const getStatusLabel = (status: string) => dataTransform.getStatusLabel(status)
 const isExpired = (expireTime: string | null) => dataTransform.isExpired(expireTime)
 
+// 多选：独立 checkbox 使用布尔 modelValue，选中 id 维护在数组中
+const isAnnouncementSelected = (id: number) => selectedAnnouncements.value.includes(id)
+
+const setAnnouncementSelected = (id: number, checked: boolean) => {
+  const next = new Set(selectedAnnouncements.value)
+  if (checked) next.add(id)
+  else next.delete(id)
+  selectedAnnouncements.value = Array.from(next)
+}
+
+const onAnnouncementCheckChange = (id: number, val: string | number | boolean) => {
+  setAnnouncementSelected(id, !!val)
+}
+
 // 选择操作
 const handleSelectAll = () => {
   selectedAnnouncements.value = selectAll.value ? paginatedAnnouncements.value.map(a => a.id) : []
 }
+
+watch(
+  [selectedAnnouncements, paginatedAnnouncements],
+  () => {
+    const ids = paginatedAnnouncements.value.map(a => a.id)
+    selectAll.value = ids.length > 0 && ids.every((id) => selectedAnnouncements.value.includes(id))
+  },
+  { deep: true }
+)
 
 const clearSelection = () => {
   selectedAnnouncements.value = []

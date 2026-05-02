@@ -228,22 +228,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { useTheme } from '@/composables/useTheme'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 
 const sidebarOpen = ref(false)
 const { isDark, toggleTheme } = useTheme()
 
-// 用户信息
-const currentUser = ref({
-  username: '',
-  role: '',
-  nickname: ''
+const currentUser = computed(() => {
+  const u = authStore.user
+  const username = u?.username ?? ''
+  return {
+    username,
+    role: u?.role ?? '',
+    nickname: u?.nickname || username || '',
+  }
 })
 
 // 完整菜单项
@@ -358,71 +362,19 @@ const navigateTo = (path: string) => {
   sidebarOpen.value = false // 移动端关闭侧边栏
 }
 
-const logout = () => {
-  ElMessage.success('退出登录成功')
+const logout = async () => {
   if (typeof window !== 'undefined') {
     try {
       sessionStorage.removeItem('token')
-      sessionStorage.removeItem('user_info')
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
       localStorage.removeItem('remember_login')
       localStorage.removeItem('saved_username')
-      localStorage.removeItem('user_info')
     } catch (e) {
       // 忽略存储错误
     }
   }
+  await authStore.logout()
   router.push('/login')
 }
-
-// 获取用户信息
-const getUserInfo = () => {
-  if (typeof window !== 'undefined') {
-    try {
-      // 尝试从localStorage获取用户信息
-      const userInfoStr = localStorage.getItem('user_info')
-      if (userInfoStr) {
-        const userInfo = JSON.parse(userInfoStr)
-        currentUser.value = {
-          username: userInfo.username || '',
-          role: userInfo.role || '',
-          nickname: userInfo.nickname || userInfo.username || ''
-        }
-      }
-      
-      // 如果localStorage没有，尝试从sessionStorage获取
-      if (!currentUser.value.username) {
-        const sessionUserInfo = sessionStorage.getItem('user_info')
-        if (sessionUserInfo) {
-          const userInfo = JSON.parse(sessionUserInfo)
-          currentUser.value = {
-            username: userInfo.username || '',
-            role: userInfo.role || '',
-            nickname: userInfo.nickname || userInfo.username || ''
-          }
-        }
-      }
-      
-      // 如果还是没有用户信息，可能需要重定向到登录页面
-      if (!currentUser.value.username || !currentUser.value.role) {
-        console.warn('用户信息不完整，可能需要重新登录')
-        // 可以在这里添加重定向到登录页面的逻辑
-        // router.push('/login')
-      }
-      
-    } catch (e) {
-      console.error('获取用户信息失败:', e)
-      // 可以在这里添加错误处理逻辑
-    }
-  }
-}
-
-// 初始化
-onMounted(() => {
-  // 获取用户信息
-  getUserInfo()
-})
 </script>
 
 <style scoped>

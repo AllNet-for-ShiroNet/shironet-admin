@@ -27,15 +27,27 @@ class DownloadApi {
     return response.data.data
   }
 
-  async downloadFile(key: string): Promise<void> {
-    await http.post(`/download/token?key=${encodeURIComponent(key)}`)
-
-    const a = document.createElement('a')
-    a.href = `/api/download/file`
-    a.download = key.split('/').pop() ?? 'download'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+  /**
+   * @param helperTab 须在用户点击时同步执行 `window.open('about:blank')` 传入。
+   * 异步请求后再 `window.open(真实url)` 会被浏览器当作非用户手势拦截，表现为「啥也不干」。
+   */
+  async downloadFile(key: string, helperTab: Window | null): Promise<void> {
+    const response = await http.post(
+      `/download/token?key=${encodeURIComponent(key)}`,
+    )
+    const raw = response.data as { url?: string; data?: { url?: string } }
+    const url =
+      (typeof raw?.url === 'string' && raw.url) ||
+      (typeof raw?.data?.url === 'string' && raw.data.url) ||
+      undefined
+    if (!url) {
+      throw new Error('服务器未返回下载地址')
+    }
+    if (helperTab) {
+      helperTab.location.href = url
+    } else {
+      window.location.href = url
+    }
   }
 }
 

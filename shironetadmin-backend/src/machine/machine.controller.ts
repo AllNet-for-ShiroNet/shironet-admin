@@ -17,7 +17,11 @@ import {
   import { ApiResponseDto, AccountGroupDto } from './dto/response.dto';
   import { Machine } from './entities/machine.entity';
   import { Arcade } from './entities/arcade.entity';
-  
+  import { ApiBearerAuth } from '@nestjs/swagger';
+  import { AdminOnly } from '../auth/decorators/auth.decorator';
+
+  @AdminOnly()
+  @ApiBearerAuth()
   @Controller('machines')
   export class MachineController {
     constructor(private readonly machineService: MachineService) {}

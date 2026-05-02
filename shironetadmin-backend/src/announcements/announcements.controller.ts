@@ -7,8 +7,6 @@ import {
     Param,
     Delete,
     Query,
-    UseGuards,
-    Req,
     ParseIntPipe,
     HttpStatus,
     HttpCode,
@@ -33,14 +31,14 @@ import {
     PaginatedAnnouncementResponseDto,
     AnnouncementStatsDto,
   } from './dto/announcement.dto';
-  
-  // import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-  // import { RolesGuard } from '../auth/roles.guard';
-  // import { Roles } from '../auth/roles.decorator';
+  import { AdminOnly } from '../auth/decorators/auth.decorator';
+  import { CurrentUser } from '../auth/decorators/current-user.decorator';
+  import { User } from '../auth/entities/user.entity';
   
   @ApiTags('announcements')
+  @ApiBearerAuth()
+  @AdminOnly()
   @Controller('announcements')
-  // @UseGuards(JwtAuthGuard, RolesGuard) // 如果需要认证
   export class AnnouncementsController {
     constructor(private readonly announcementsService: AnnouncementsService) {}
   
@@ -54,14 +52,11 @@ import {
     @ApiResponse({ status: 400, description: '请求参数错误' })
     @ApiResponse({ status: 401, description: '未授权' })
     @ApiBody({ type: CreateAnnouncementDto })
-    // @ApiBearerAuth()
-    // @Roles('admin', 'editor') // 如果需要角色权限
     async create(
       @Body() createAnnouncementDto: CreateAnnouncementDto,
-      @Req() req: any, // 从请求中获取用户信息
+      @CurrentUser() user: User,
     ): Promise<{ success: boolean; data: AnnouncementResponseDto; message: string }> {
-      // 模拟从请求中获取用户ID，实际应该从JWT token中获取
-      const userId = req.user?.id || 1;
+      const userId = user.id;
       
       const data = await this.announcementsService.create(createAnnouncementDto, userId);
       return {
@@ -137,13 +132,12 @@ import {
     @ApiResponse({ status: 404, description: '公告不存在' })
     @ApiResponse({ status: 400, description: '请求参数错误' })
     @ApiBody({ type: UpdateAnnouncementDto })
-    // @ApiBearerAuth()
     async update(
       @Param('id', ParseIntPipe) id: number,
       @Body() updateAnnouncementDto: UpdateAnnouncementDto,
-      @Req() req: any,
+      @CurrentUser() user: User,
     ): Promise<{ success: boolean; data: AnnouncementResponseDto; message: string }> {
-      const userId = req.user?.id || 1;
+      const userId = user.id;
       const data = await this.announcementsService.update(id, updateAnnouncementDto, userId);
       return {
         success: true,
@@ -158,12 +152,11 @@ import {
     @ApiResponse({ status: 200, description: '删除成功' })
     @ApiResponse({ status: 404, description: '公告不存在' })
     @HttpCode(HttpStatus.OK)
-    // @ApiBearerAuth()
     async remove(
       @Param('id', ParseIntPipe) id: number,
-      @Req() req: any,
+      @CurrentUser() user: User,
     ): Promise<{ success: boolean; message: string }> {
-      const userId = req.user?.id || 1;
+      const userId = user.id;
       await this.announcementsService.remove(id, userId);
       return {
         success: true,
@@ -181,12 +174,11 @@ import {
     })
     @ApiResponse({ status: 404, description: '公告不存在' })
     @ApiResponse({ status: 400, description: '公告已发布' })
-    // @ApiBearerAuth()
     async publish(
       @Param('id', ParseIntPipe) id: number,
-      @Req() req: any,
+      @CurrentUser() user: User,
     ): Promise<{ success: boolean; data: AnnouncementResponseDto; message: string }> {
-      const userId = req.user?.id || 1;
+      const userId = user.id;
       const data = await this.announcementsService.publish(id, userId);
       return {
         success: true,
@@ -200,12 +192,11 @@ import {
     @ApiResponse({ status: 200, description: '批量发布完成' })
     @ApiResponse({ status: 400, description: '没有可发布的公告' })
     @ApiBody({ type: BatchPublishDto })
-    // @ApiBearerAuth()
     async batchPublish(
       @Body() batchPublishDto: BatchPublishDto,
-      @Req() req: any,
+      @CurrentUser() user: User,
     ): Promise<{ success: boolean; data: { published: number; failed: number }; message: string }> {
-      const userId = req.user?.id || 1;
+      const userId = user.id;
       const data = await this.announcementsService.batchPublish(batchPublishDto, userId);
       return {
         success: true,
@@ -220,12 +211,11 @@ import {
     @ApiResponse({ status: 400, description: '没有找到要删除的公告' })
     @ApiBody({ type: BatchDeleteDto })
     @HttpCode(HttpStatus.OK)
-    // @ApiBearerAuth()
     async batchDelete(
       @Body() batchDeleteDto: BatchDeleteDto,
-      @Req() req: any,
+      @CurrentUser() user: User,
     ): Promise<{ success: boolean; data: { deleted: number; failed: number }; message: string }> {
-      const userId = req.user?.id || 1;
+      const userId = user.id;
       const data = await this.announcementsService.batchDelete(batchDeleteDto, userId);
       return {
         success: true,
@@ -243,12 +233,11 @@ import {
       type: AnnouncementResponseDto,
     })
     @ApiResponse({ status: 404, description: '公告不存在' })
-    // @ApiBearerAuth()
     async togglePin(
       @Param('id', ParseIntPipe) id: number,
-      @Req() req: any,
+      @CurrentUser() user: User,
     ): Promise<{ success: boolean; data: AnnouncementResponseDto; message: string }> {
-      const userId = req.user?.id || 1;
+      const userId = user.id;
       const data = await this.announcementsService.togglePin(id, userId);
       return {
         success: true,

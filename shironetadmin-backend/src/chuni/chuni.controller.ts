@@ -1,7 +1,11 @@
 // src/chuni/chuni.controller.ts
-import { Controller, Get, Param, ParseIntPipe, HttpStatus, HttpCode, Query, Put, Body } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Query, Put, Body } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { ChuniService } from './chuni.service';
+import { AdminOnly } from '../auth/decorators/auth.decorator';
 
+@AdminOnly()
+@ApiBearerAuth()
 @Controller('chuni')
 export class ChuniController {
   constructor(private readonly chuniService: ChuniService) {}

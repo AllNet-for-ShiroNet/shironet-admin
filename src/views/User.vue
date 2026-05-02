@@ -550,12 +550,8 @@ const loadUsers = async () => {
     
     users.value = result.users
     total.value = result.total
-    
-    console.log('加载的用户数据:', users.value)
-    console.log('总数:', total.value)
-    
+
   } catch (error: any) {
-    console.error('加载用户列表失败:', error)
     ElMessage.error(error.message || '加载用户列表失败')
     users.value = []
     total.value = 0
@@ -627,7 +623,6 @@ const toggleCardBan = async (user: User) => {
     await loadUsers()
   } catch (error: any) {
     if (error !== 'cancel') {
-      console.error('切换卡片封禁状态失败:', error)
       ElMessage.error(error.message || '操作失败')
     }
   }
@@ -650,7 +645,6 @@ const deleteUser = async (user: User) => {
     await loadUsers()
   } catch (error: any) {
     if (error !== 'cancel') {
-      console.error('删除用户失败:', error)
       ElMessage.error(error.message || '删除失败')
     }
   }
@@ -700,7 +694,6 @@ const saveUser = async () => {
     // 重新加载数据
     await loadUsers()
   } catch (error: any) {
-    console.error('保存用户失败:', error)
     ElMessage.error(error.message || '保存失败')
   } finally {
     saveLoading.value = false
@@ -727,7 +720,6 @@ const toggleCardLock = async (user: User) => {
     await loadUsers()
   } catch (error: any) {
     if (error !== 'cancel') {
-      console.error('切换卡片锁定状态失败:', error)
       ElMessage.error(error.message || '操作失败')
     }
   }
@@ -751,7 +743,6 @@ const batchDeleteUsers = async (userIds: number[]) => {
     await loadUsers()
   } catch (error: any) {
     if (error !== 'cancel') {
-      console.error('批量删除失败:', error)
       ElMessage.error(error.message || '批量删除失败')
     }
   }
@@ -761,10 +752,8 @@ const batchDeleteUsers = async (userIds: number[]) => {
 const getUserStats = async () => {
   try {
     const stats = await userApi.getUserStats()
-    console.log('用户统计信息:', stats)
     return stats
   } catch (error: any) {
-    console.error('获取统计信息失败:', error)
     ElMessage.error(error.message || '获取统计信息失败')
   }
 }

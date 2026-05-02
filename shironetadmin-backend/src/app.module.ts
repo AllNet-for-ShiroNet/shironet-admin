@@ -1,5 +1,6 @@
 // src/app.module.ts
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UserModule } from './user/user.module';
@@ -10,6 +11,9 @@ import { UploadModule } from './upload/upload.module';
 import { AuthModule } from './auth/auth.module';
 import { ChuniModule } from './chuni/chuni.module';
 import { DownloadModule } from './download/download.module';
+import { HealthModule } from './common/health/health.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
 
 // aime 数据库实体
 import { AimeUser } from './user/entities/aime-user.entity';
@@ -110,8 +114,12 @@ import { User } from './auth/entities/user.entity';
     UploadModule,
     ChuniModule, // CHUNITHM数据模块
     DownloadModule, // 文件下载模块
+    HealthModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+  ],
 })
 export class AppModule {}

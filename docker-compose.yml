@@ -1,0 +1,8 @@
+services:
+  shironet-admin-dashboard:
+    image: reg.starivercs.com/shironet/shironet-admin-dashboard:20260503002342
+    container_name: shironet-admin-dashboard
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - /root/shironet-admin-conf/.env:/app/.env:ro

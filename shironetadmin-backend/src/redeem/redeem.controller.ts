@@ -16,7 +16,11 @@ import {
   import { CreateRedeemCodeDto } from './dto/create-redeem-code.dto';
   import { UpdateRedeemCodeDto } from './dto/update-redeem-code.dto';
   import { BatchCreateRedeemCodeDto } from './dto/batch-create-redeem-code.dto';
-  
+  import { ApiBearerAuth } from '@nestjs/swagger';
+  import { AdminOnly } from '../auth/decorators/auth.decorator';
+
+  @AdminOnly()
+  @ApiBearerAuth()
   @Controller('redeem')
   export class RedeemController {
     constructor(private readonly redeemService: RedeemService) {}

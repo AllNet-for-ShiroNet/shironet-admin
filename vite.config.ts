@@ -20,7 +20,6 @@ export default defineConfig({
     })
   ],
   define: {
-    // 修复 process is not defined 错误
     'process.env': 'import.meta.env',
     global: 'globalThis',
   },

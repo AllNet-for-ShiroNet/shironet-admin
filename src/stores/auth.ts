@@ -3,50 +3,68 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi, type LoginRequest, type UserProfile } from '@/api/auth'
 import { ElMessage } from 'element-plus'
+import {
+  clearAuthSessionPersistence,
+  onStoredUserChanged,
+  persistUserProfile,
+  readStoredUserProfile,
+} from '@/utils/auth-session'
+import {
+  onAuthTokensChanged,
+  persistTokens,
+  readAccessRaw,
+  readRefreshRaw,
+} from '@/utils/auth-token'
+
+/** 远端会话校验节流：避免因「永远不 initAuth」导致 access 过期只能靠统计等接口兜底；又不会每次路由都打 /profile */
+const SESSION_VERIFY_INTERVAL_MS = 90 * 1000
 
 export const useAuthStore = defineStore('auth', () => {
-  // 状态
-  const user = ref<UserProfile | null>(null)
-  const accessToken = ref<string | null>(localStorage.getItem('access_token'))
-  const refreshToken = ref<string | null>(localStorage.getItem('refresh_token'))
+  const lastRemoteSessionVerifyAt = ref(0)
+
+  /** 单次飞行，合并并发 initAuth（例如快速连点多级路由） */
+  let verifyInFlight: Promise<void> | null = null
+
+  function syncRefsFromStorage() {
+    accessToken.value = readAccessRaw()
+    refreshToken.value = readRefreshRaw()
+  }
+
+  function syncUserFromStored() {
+    user.value = readStoredUserProfile()
+  }
+
+  const user = ref<UserProfile | null>(readStoredUserProfile())
+  const accessToken = ref<string | null>(readAccessRaw())
+  const refreshToken = ref<string | null>(readRefreshRaw())
   const loading = ref(false)
 
-  // 计算属性
-  const isAuthenticated = computed(() => !!accessToken.value)
+  onAuthTokensChanged(syncRefsFromStorage)
+  onStoredUserChanged(syncUserFromStored)
+
+  const isAuthenticated = computed(() => !!accessToken.value?.trim())
   const isAdmin = computed(() => user.value?.role === 'admin')
   const isUser = computed(() => user.value?.role === 'user')
 
-  // 设置令牌
   const setTokens = (access: string, refresh: string) => {
-    accessToken.value = access
-    refreshToken.value = refresh
-    localStorage.setItem('access_token', access)
-    localStorage.setItem('refresh_token', refresh)
+    persistTokens(access, refresh)
   }
 
-  // 设置用户信息
+  /** 仅存一份：持久化并由 onStoredUserChanged 回写到 ref（含同 tab 内同步 notify） */
   const setUser = (userInfo: UserProfile) => {
-    user.value = userInfo
-    localStorage.setItem('user_info', JSON.stringify(userInfo))
+    persistUserProfile(userInfo)
   }
 
-  // 清除认证信息
   const clearAuth = () => {
-    user.value = null
-    accessToken.value = null
-    refreshToken.value = null
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    localStorage.removeItem('user_info')
+    lastRemoteSessionVerifyAt.value = 0
+    clearAuthSessionPersistence()
   }
 
-  // 登录
   const login = async (loginData: LoginRequest): Promise<boolean> => {
     try {
       loading.value = true
       const response = await authApi.login(loginData)
-      
-      // 保存令牌和用户信息
+
       setTokens(response.access_token, response.refresh_token)
       setUser({
         id: response.user.id,
@@ -54,8 +72,9 @@ export const useAuthStore = defineStore('auth', () => {
         nickname: response.user.nickname,
         role: response.user.role,
         createdAt: new Date().toISOString(),
-        lastLoginAt: new Date().toISOString()
+        lastLoginAt: new Date().toISOString(),
       })
+      lastRemoteSessionVerifyAt.value = Date.now()
 
       ElMessage.success('登录成功！')
       return true
@@ -68,7 +87,6 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // 获取用户信息
   const fetchUserProfile = async (): Promise<boolean> => {
     try {
       const userProfile = await authApi.getProfile()
@@ -80,53 +98,55 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // 注销
   const logout = async () => {
     try {
-      if (accessToken.value) {
+      if (readAccessRaw()) {
         await authApi.logout()
       }
-    } catch (error) {
-      console.warn('注销请求失败:', error)
+    } catch {
+      /* 注销接口失败仍可清理本地会话 */
     } finally {
       clearAuth()
       ElMessage.success('已注销')
     }
   }
 
-  // 初始化认证状态
   const initAuth = async () => {
-    const storedUser = localStorage.getItem('user_info')
-    if (storedUser && accessToken.value) {
-      try {
-        user.value = JSON.parse(storedUser)
-        // 验证令牌是否仍然有效
-        await fetchUserProfile()
-      } catch (error) {
-        clearAuth()
-      }
-    }
+    if (!readAccessRaw()) return
+    if (verifyInFlight) return verifyInFlight
+
+    const elapsed = Date.now() - lastRemoteSessionVerifyAt.value
+    if (elapsed >= 0 && elapsed < SESSION_VERIFY_INTERVAL_MS) return
+
+    verifyInFlight = (async () => {
+      const cached = readStoredUserProfile()
+      if (cached) user.value = cached
+
+      const ok = await fetchUserProfile()
+      if (ok) lastRemoteSessionVerifyAt.value = Date.now()
+    })().finally(() => {
+      verifyInFlight = null
+    })
+
+    return verifyInFlight
   }
 
   return {
-    // 状态
     user,
     accessToken,
     refreshToken,
     loading,
-    
-    // 计算属性
+
     isAuthenticated,
     isAdmin,
     isUser,
-    
-    // 方法
+
     login,
     logout,
     fetchUserProfile,
     clearAuth,
     initAuth,
     setTokens,
-    setUser
+    setUser,
   }
 })

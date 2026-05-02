@@ -201,6 +201,14 @@ export class BatchImportMusicDto {
   data: ImportMusicDto[];
 }
 
+export class UploadedAssetDto {
+  @ApiProperty({ description: 'R2 对象键' })
+  key: string;
+
+  @ApiProperty({ description: 'ZIP 内源路径' })
+  sourceZipPath: string;
+}
+
 // XML 文件上传结果 DTO
 export class XmlParseResultDto {
   @ApiProperty({ description: '解析成功的数据' })
@@ -215,6 +223,17 @@ export class XmlParseResultDto {
   @ApiProperty({ description: '错误信息', required: false })
   @IsOptional()
   errors?: string[];
+
+  @ApiPropertyOptional({
+    description: '已成功上传到 R2 的资源',
+    type: [UploadedAssetDto],
+  })
+  @IsOptional()
+  uploadedAssets?: UploadedAssetDto[];
+
+  @ApiPropertyOptional({ description: '资源上传到 R2 时的错误' })
+  @IsOptional()
+  uploadErrors?: string[];
 }
 
 // 导入结果统计 DTO

@@ -140,9 +140,6 @@
   // 方法
   const saveSettings = async () => {
     try {
-      console.log('保存设置:', settings.value)
-      
-      // 模拟API调用
       await new Promise(resolve => setTimeout(resolve, 500))
       
       // 更新原始设置
@@ -154,8 +151,8 @@
         showSuccessMessage.value = false
       }, 3000)
       
-    } catch (error) {
-      console.error('保存失败:', error)
+    } catch {
+      // 保留扩展：在此处接真实 API 与 ElMessage
     }
   }
   
@@ -173,9 +170,9 @@
   
   const loadSettings = async () => {
     try {
-      console.log('加载设置')
-    } catch (error) {
-      console.error('加载设置失败:', error)
+      // TODO: 从后端加载设置
+    } catch {
+      // ...
     }
   }
   </script>

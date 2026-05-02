@@ -9,6 +9,7 @@ import {
   import { InjectRepository } from '@nestjs/typeorm';
   import { Repository } from 'typeorm';
   import * as bcrypt from 'bcrypt';
+  import { ConfigService } from '@nestjs/config';
   import { User, UserRole } from './entities/user.entity';
   import { LoginDto } from './dto/login.dto';
   import { AuthResponseDto } from './dto/auth-response.dto';
@@ -36,6 +37,7 @@ import {
       @InjectRepository(User, 'shironet') // 指定使用 shironet 数据库连接
       private readonly userRepository: Repository<User>,
       private readonly jwtService: JwtService,
+      private readonly configService: ConfigService,
     ) {}
   
     async login(loginDto: LoginDto): Promise<AuthResponseDto> {
@@ -90,8 +92,10 @@ import {
   
     async refreshToken(refreshToken: string): Promise<AuthResponseDto> {
       try {
+        const refreshSecret =
+          this.configService.get<string>('JWT_REFRESH_SECRET') ?? process.env.JWT_REFRESH_SECRET;
         const payload = this.jwtService.verify(refreshToken, {
-          secret: process.env.JWT_REFRESH_SECRET,
+          secret: refreshSecret,
         });
   
         const user = await this.userRepository.findOne({
@@ -176,15 +180,20 @@ import {
         username: user.username,
         role: user.role,
       };
-  
+
+      const accessSecret = this.configService.get<string>('JWT_SECRET');
+      const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
+      const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN', '15m');
+      const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d');
+
       const [accessToken, refreshToken] = await Promise.all([
         this.jwtService.signAsync(payload, {
-          secret: process.env.JWT_SECRET,
-          expiresIn: process.env.JWT_EXPIRES_IN || '15m',
+          secret: accessSecret,
+          expiresIn,
         }),
         this.jwtService.signAsync(payload, {
-          secret: process.env.JWT_REFRESH_SECRET,
-          expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+          secret: refreshSecret,
+          expiresIn: refreshExpiresIn,
         }),
       ]);
   

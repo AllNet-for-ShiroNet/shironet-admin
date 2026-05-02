@@ -182,13 +182,67 @@
               {{ getProcessedTypesDisplay() }}
             </span>
           </div>
+          <div v-if="parseResult.uploadedAssets && parseResult.uploadedAssets.length > 0">
+            <span :class="[
+              'block font-medium',
+              isDark ? 'text-gray-300' : 'text-blue-700'
+            ]">R2 资源</span>
+            <span :class="[
+              isDark ? 'text-emerald-300' : 'text-emerald-600'
+            ]">{{ parseResult.uploadedAssets.length }} 个</span>
+          </div>
+          <div v-if="parseResult.uploadErrors && parseResult.uploadErrors.length > 0">
+            <span :class="[
+              'block font-medium text-amber-500'
+            ]">上传告警</span>
+            <span class="text-amber-600">{{ parseResult.uploadErrors.length }} 条</span>
+          </div>
           <div v-if="parseResult.errors && parseResult.errors.length > 0">
             <span :class="[
               'block font-medium text-red-500'
-            ]">错误</span>
+            ]">解析错误</span>
             <span class="text-red-400">{{ parseResult.errors.length }} 个</span>
           </div>
         </div>
+      </div>
+
+      <!-- R2 上传告警 -->
+      <div v-if="parseResult.uploadErrors && parseResult.uploadErrors.length > 0" class="mb-4">
+        <el-collapse>
+          <el-collapse-item title="R2 上传告警" name="r2errs">
+            <div class="space-y-2">
+              <div
+                v-for="(msg, index) in parseResult.uploadErrors"
+                :key="'ue-' + index"
+                class="p-2 bg-amber-50 text-amber-900 rounded text-sm"
+              >
+                <el-icon class="mr-1"><Warning /></el-icon>
+                {{ msg }}
+              </div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
+
+      <!-- 已成功写入 R2 的对象（摘要） -->
+      <div v-if="parseResult.uploadedAssets && parseResult.uploadedAssets.length > 0" class="mb-4">
+        <el-collapse>
+          <el-collapse-item title="R2 已上传对象键（摘要）" name="r2ok">
+            <div class="max-h-48 overflow-y-auto space-y-1 text-xs font-mono">
+              <div
+                v-for="(item, index) in parseResult.uploadedAssets"
+                :key="'ua-' + index"
+                :class="[
+                  'truncate',
+                  isDark ? 'text-gray-300' : 'text-gray-700'
+                ]"
+                :title="item.key + ' ← ' + item.sourceZipPath"
+              >
+                {{ item.key }}
+              </div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
       </div>
 
       <!-- 错误信息 -->
@@ -716,6 +770,7 @@ import {
   type UploadStats, 
   type UploadType, 
   type XmlParseResultDto,
+  type UploadedAssetDto,
   type ZipPreview
 } from '@/api/upload'
 
@@ -743,7 +798,6 @@ const groupByGenre = ref(true) // 默认开启genre分组
 
 // 从父组件获取主题状态
 const isDark = inject('isDark', ref(false))
-
 // 检测屏幕尺寸
 const checkMobile = () => {
   isMobile.value = window.innerWidth < 640
@@ -1005,7 +1059,6 @@ const fetchUploadStats = async () => {
     loading.value = true
     uploadStats.value = await uploadApi.getUploadStats()
   } catch (error: any) {
-    console.error('获取上传统计失败:', error)
     ElMessage.error(error.message || '获取上传统计失败')
   } finally {
     loading.value = false
@@ -1064,7 +1117,6 @@ const viewTypeData = async () => {
     
     ElMessage.success(`加载了 ${result.data.length} 条 ${typeName} 数据`)
   } catch (error: any) {
-    console.error('查看数据失败:', error)
     ElMessage.error(error.message || '查看数据失败')
   } finally {
     loading.value = false
@@ -1092,7 +1144,6 @@ const clearTypeData = async () => {
     fetchUploadStats()
   } catch (error: any) {
     if (error !== 'cancel') {
-      console.error('清空失败:', error)
       ElMessage.error(error.message || '清空失败')
     }
   }
@@ -1204,7 +1255,6 @@ const processSelectedFiles = async (files: File[]) => {
         ElMessage.warning('无法自动检测文件类型，请确认文件格式正确')
       }
     } catch (error: any) {
-      console.warn('文件类型检测失败:', error)
       ElMessage.warning('文件类型自动检测失败，但文件已添加')
     }
   }
@@ -1239,8 +1289,8 @@ const removeFile = (index: number) => {
         selectedTypesForProcessing.value = detection.detectedType ? [detection.detectedType] : []
         conflictingTypes.value = []
       }
-    }).catch(error => {
-      console.warn('重新检测文件类型失败:', error)
+    }).catch(() => {
+      // 静默：类型检测失败时已展示 ElMessage / 或由后续操作报错
     })
   }
 }
@@ -1279,6 +1329,8 @@ const startUpload = async () => {
     let totalFileCount = 0
     let totalDataCount = 0
     const allErrors: string[] = []
+    const allUploadedAssets: UploadedAssetDto[] = []
+    const allUploadErrors: string[] = []
     
     for (const currentType of typesToProcess) {
       uploadingPhase.value = `解析 ${UPLOAD_TYPE_LABELS[currentType]}...`
@@ -1292,6 +1344,12 @@ const startUpload = async () => {
           totalDataCount += result.data.dataCount || 0
           if (result.data.errors && result.data.errors.length > 0) {
             allErrors.push(...result.data.errors)
+          }
+          if (result.data.uploadedAssets?.length) {
+            allUploadedAssets.push(...result.data.uploadedAssets)
+          }
+          if (result.data.uploadErrors?.length) {
+            allUploadErrors.push(...result.data.uploadErrors)
           }
         }
       } catch (error: any) {
@@ -1308,7 +1366,9 @@ const startUpload = async () => {
       data: allResults,
       fileCount: totalFileCount,
       dataCount: totalDataCount,
-      errors: allErrors.length > 0 ? allErrors : undefined
+      errors: allErrors.length > 0 ? allErrors : undefined,
+      uploadedAssets: allUploadedAssets.length > 0 ? allUploadedAssets : undefined,
+      uploadErrors: allUploadErrors.length > 0 ? allUploadErrors : undefined
     }
     
     // 更新处理类型信息
@@ -1317,7 +1377,14 @@ const startUpload = async () => {
     }
     
     const processedTypes = typesToProcess.map(type => UPLOAD_TYPE_LABELS[type]).join(', ')
-    ElMessage.success(`处理完成: ${processedTypes}，共解析 ${totalDataCount} 条数据`)
+    let doneMsg = `处理完成: ${processedTypes}，共解析 ${totalDataCount} 条数据`
+    if (allUploadedAssets.length > 0) {
+      doneMsg += `，R2 已写入 ${allUploadedAssets.length} 个文件`
+    }
+    if (allUploadErrors.length > 0) {
+      doneMsg += `（${allUploadErrors.length} 条上传告警）`
+    }
+    ElMessage.success(doneMsg)
     
     showUploadDialog.value = false
     selectedFiles.value = []
@@ -1327,7 +1394,6 @@ const startUpload = async () => {
     fileTypeMap.value.clear()
     currentPage.value = 1 // 重置分页
   } catch (error: any) {
-    console.error('处理失败:', error)
     ElMessage.error(error.message || '处理失败')
   } finally {
     uploading.value = false
@@ -1370,7 +1436,6 @@ const importParsedData = async () => {
     selectedTypesForProcessing.value = []
     fetchUploadStats()
   } catch (error: any) {
-    console.error('导入失败:', error)
     ElMessage.error(error.message || '导入失败')
   } finally {
     importing.value = false

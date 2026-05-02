@@ -166,10 +166,13 @@ async function switchTab(tab: Tab) {
 async function handleDownload(file: FileInfo) {
   if (downloadingKeys.value.has(file.key)) return
   downloadingKeys.value.add(file.key)
+  // 同步打开空白页，避免 await 后 window.open 被拦截；URL 拿到后由该页跳转到 R2
+  const helperTab = window.open('about:blank', '_blank')
   try {
-    await downloadApi.downloadFile(file.key)
+    await downloadApi.downloadFile(file.key, helperTab)
     ElMessage.success(`${file.name} 下载已开始`)
   } catch (e: any) {
+    helperTab?.close()
     ElMessage.error(e.message || '下载失败，请重试')
   } finally {
     downloadingKeys.value.delete(file.key)

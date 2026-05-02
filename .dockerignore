@@ -1,0 +1,13 @@
+.git
+**/.git
+node_modules
+dist
+shironetadmin-backend/node_modules
+shironetadmin-backend/dist
+.env
+.env.*
+!.env.example
+*.md
+**/coverage
+**/.cursor
+**/terminals

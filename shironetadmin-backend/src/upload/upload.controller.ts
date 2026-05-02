@@ -10,7 +10,7 @@ import {
   ParseFilePipeBuilder,
   HttpStatus,
   BadRequestException,
-  Query
+  Query,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -20,9 +20,11 @@ import {
   ApiConsumes,
   ApiBody,
   ApiParam,
-  ApiQuery
+  ApiQuery,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { Express } from 'express';
+import { AdminOnly } from '../auth/decorators/auth.decorator';
 import { UploadService } from './upload.service';
 import {
   BatchImportAvatarAccessoryDto,
@@ -36,9 +38,22 @@ import {
 } from './dto/upload.dto';
 
 @ApiTags('upload')
+@ApiBearerAuth()
+@AdminOnly()
 @Controller('upload')
 export class UploadController {
   constructor(private readonly uploadService: UploadService) {}
+
+  private formatParseMessage(result: XmlParseResultDto): string {
+    let msg = `解析完成，共处理 ${result.fileCount} 个文件，获得 ${result.dataCount} 条数据`;
+    if (result.uploadedAssets?.length) {
+      msg += `，R2 已写入 ${result.uploadedAssets.length} 个资源`;
+    }
+    if (result.uploadErrors?.length) {
+      msg += `（${result.uploadErrors.length} 条上传告警）`;
+    }
+    return msg;
+  }
 
   // 文件上传验证管道
   private readonly fileValidationPipe = new ParseFilePipeBuilder()
@@ -86,7 +101,7 @@ export class UploadController {
     return {
       success: true,
       data: result,
-      message: `解析完成，共处理 ${result.fileCount} 个文件，获得 ${result.dataCount} 条数据`,
+      message: this.formatParseMessage(result),
     };
   }
 
@@ -119,7 +134,7 @@ export class UploadController {
     return {
       success: true,
       data: result,
-      message: `解析完成，共处理 ${result.fileCount} 个文件，获得 ${result.dataCount} 条数据`,
+      message: this.formatParseMessage(result),
     };
   }
 
@@ -138,7 +153,7 @@ export class UploadController {
     return {
       success: true,
       data: result,
-      message: `解析完成，共处理 ${result.fileCount} 个文件，获得 ${result.dataCount} 条数据`,
+      message: this.formatParseMessage(result),
     };
   }
 
@@ -157,7 +172,7 @@ export class UploadController {
     return {
       success: true,
       data: result,
-      message: `解析完成，共处理 ${result.fileCount} 个文件，获得 ${result.dataCount} 条数据`,
+      message: this.formatParseMessage(result),
     };
   }
 
@@ -176,7 +191,7 @@ export class UploadController {
     return {
       success: true,
       data: result,
-      message: `解析完成，共处理 ${result.fileCount} 个文件，获得 ${result.dataCount} 条数据`,
+      message: this.formatParseMessage(result),
     };
   }
 
@@ -214,7 +229,7 @@ export class UploadController {
     return {
       success: true,
       data: result,
-      message: `解析完成，共处理 ${result.fileCount} 个文件，获得 ${result.dataCount} 条数据`,
+      message: this.formatParseMessage(result),
     };
   }
 

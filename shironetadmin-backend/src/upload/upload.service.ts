@@ -3,7 +3,9 @@ import {
   BadRequestException,
   Logger,
   InternalServerErrorException,
+  Inject,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { parseStringPromise } from 'xml2js';
@@ -33,6 +35,11 @@ import {
   XmlParseResultDto,
   ImportResultDto,
 } from './dto/upload.dto';
+import { R2StorageService } from '../storage/r2-storage.service';
+import { R2_STATICSTOR } from '../storage/r2-storage.tokens';
+import { convertDdsBufferToWebp } from './dds-webp.util';
+
+const ZIP_ASSET_EXT = /\.(dds|webp|png|jpg|jpeg|acb|awb)$/i;
 
 @Injectable()
 export class UploadService {
@@ -56,6 +63,9 @@ export class UploadService {
     
     @InjectRepository(ChuniStaticMusic)
     private musicRepository: Repository<ChuniStaticMusic>,
+
+    private readonly configService: ConfigService,
+    @Inject(R2_STATICSTOR) private readonly r2Storage: R2StorageService,
   ) {}
 
   /**
@@ -70,6 +80,8 @@ export class UploadService {
     let allData: any[] = [];
     let fileCount = 0;
     let errors: string[] = [];
+    const uploadedAssets: { key: string; sourceZipPath: string }[] = [];
+    const uploadErrors: string[] = [];
 
     for (const file of files) {
       try {
@@ -80,6 +92,12 @@ export class UploadService {
           fileCount += zipData.fileCount;
           if (zipData.errors) {
             errors.push(...zipData.errors);
+          }
+          if (zipData.uploadedAssets?.length) {
+            uploadedAssets.push(...zipData.uploadedAssets);
+          }
+          if (zipData.uploadErrors?.length) {
+            uploadErrors.push(...zipData.uploadErrors);
           }
         } else if (file.mimetype === 'application/xml' || file.originalname.endsWith('.xml')) {
           // 处理单个 XML 文件
@@ -106,79 +124,330 @@ export class UploadService {
       fileCount,
       dataCount: allData.length,
       errors: errors.length > 0 ? errors : undefined,
+      uploadedAssets: uploadedAssets.length > 0 ? uploadedAssets : undefined,
+      uploadErrors: uploadErrors.length > 0 ? uploadErrors : undefined,
     };
   }
 
-  /**
-   * 解析 ZIP 文件
-   */
-  private async parseZipFile(
-    buffer: Buffer,
-    type: string
-  ): Promise<{ data: any[]; fileCount: number; errors?: string[] }> {
-    const zip = new JSZip();
-    const zipContent = await zip.loadAsync(buffer);
-    
-    let data: any[] = [];
-    let fileCount = 0;
-    let errors: string[] = [];
+  private zipLeafDir(zipEntryPath: string): string {
+    const norm = zipEntryPath.replace(/\\/g, '/');
+    const idx = norm.lastIndexOf('/');
+    return idx >= 0 ? norm.slice(0, idx + 1) : '';
+  }
 
-    if (type === 'music') {
-      // 特殊处理音乐文件：查找 music/music{id}/Music.xml 格式 - 保持原有逻辑
-      for (const [filename, file] of Object.entries(zipContent.files)) {
-        if (!file.dir && filename.match(/music\/music\d+\/Music\.xml$/)) {
-          try {
-            const xmlBuffer = await file.async('nodebuffer');
-            const xmlDataArray = await this.parseXmlFile(xmlBuffer, filename, type);
-            if (xmlDataArray && Array.isArray(xmlDataArray)) {
-              data.push(...xmlDataArray);
-              fileCount += 1;
-            }
-          } catch (error) {
-            this.logger.error(`解析 ZIP 中的 Music.xml 文件失败: ${filename}`, error);
-            errors.push(`解析 ZIP 中的 Music.xml 文件失败: ${filename} - ${error.message}`);
+  /** 统一 ZIP 内路径：反斜杠转正斜杠、去掉开头 ./ 与多余 /，避免 Windows 打的包匹配失败 */
+  private normalizeZipEntryPath(zipEntryPath: string): string {
+    return zipEntryPath
+      .replace(/\\/g, '/')
+      .replace(/^\.\/+/, '')
+      .replace(/^\/+/, '');
+  }
+
+  private basenameZip(zipEntryPath: string): string {
+    const norm = zipEntryPath.replace(/\\/g, '/');
+    const idx = norm.lastIndexOf('/');
+    return idx >= 0 ? norm.slice(idx + 1) : norm;
+  }
+
+  private guessAssetContentType(filename: string): string {
+    const lower = filename.toLowerCase();
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.dds')) return 'image/vnd.ms.dds';
+    return 'application/octet-stream';
+  }
+
+  /** 与桶内实测及 CDN 路径约定一致：name-plate 在桶根；其余在 R2_KEY_PREFIX_GAME_TREE/{category}/ */
+  private buildR2ObjectKey(
+    uploadType: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music',
+    fileBasename: string,
+  ): string {
+    const platePrefix = (
+      this.configService.get<string>('R2_KEY_PREFIX_NAMEPLATE') ?? 'name-plate'
+    ).replace(/^\/+|\/+$/g, '');
+    const gameTree = (
+      this.configService.get<string>('R2_KEY_PREFIX_GAME_TREE') ?? 'chuni/chuni'
+    ).replace(/^\/+|\/+$/g, '');
+
+    const categoryByType: Record<string, string> = {
+      avatarAccessory: 'avatar',
+      mapIcon: 'map-icon',
+      namePlate: 'name-plate',
+      systemVoice: 'system-voice-icon',
+      trophy: 'trophy',
+      music: 'jacket',
+    };
+
+    if (uploadType === 'namePlate') {
+      return `${platePrefix}/${fileBasename}`;
+    }
+    const cat = categoryByType[uploadType] ?? 'misc';
+    return `${gameTree}/${cat}/${fileBasename}`;
+  }
+
+  /** 将已成功转为 WebP 上传的条目同步回解析数据中的路径字段，便于批量导入与 CDN 扩展名一致 */
+  private rewriteParsedAssetPathsFromWebpUploads(
+    parsedData: any[],
+    uploaded: { key: string; sourceZipPath: string }[],
+  ): void {
+    for (const item of uploaded) {
+      if (!item.sourceZipPath.toLowerCase().endsWith('.dds')) continue;
+      if (!item.key.toLowerCase().endsWith('.webp')) continue;
+      const srcBase = this.basenameZip(item.sourceZipPath);
+      const destBase = this.basenameZip(item.key);
+      for (const row of parsedData) {
+        for (const field of ['imagePath', 'cuePath', 'jacketPath'] as const) {
+          const v = row[field];
+          if (v == null || v === '') continue;
+          if (this.basenameZip(String(v)) === srcBase) {
+            row[field] = destBase;
           }
         }
       }
+    }
+  }
+
+  private async syncZipAssetsToR2(
+    zipContent: JSZip,
+    uploadType: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music',
+    leafPrefixes: Set<string>,
+    parsedData: any[],
+  ): Promise<{ uploaded: { key: string; sourceZipPath: string }[]; uploadErrors: string[] }> {
+    const uploaded: { key: string; sourceZipPath: string }[] = [];
+    const uploadErrors: string[] = [];
+
+    if (!this.r2Storage.isEnabled()) {
+      uploadErrors.push(
+        'R2 静态资源未配置（需 R2_STATICSTOR_*：BUCKET / ENDPOINT / ACCESS_KEY_ID / SECRET_ACCESS_KEY），跳过资源上传',
+      );
+      return { uploaded, uploadErrors };
+    }
+
+    const referencedBasenames = new Set<string>();
+    if (uploadType === 'music') {
+      for (const row of parsedData) {
+        if (row?.jacketPath) {
+          referencedBasenames.add(this.basenameZip(String(row.jacketPath)));
+        }
+      }
     } else {
-      // 处理其他类型：根据Python脚本的路径模式
-      const folderMapping = {
-        'avatarAccessory': 'avatarAccessory',
-        'mapIcon': 'mapIcon',
-        'namePlate': 'namePlate', 
-        'systemVoice': 'systemVoice',
-        'trophy': 'trophy'
+      for (const row of parsedData) {
+        if (row?.imagePath) {
+          referencedBasenames.add(this.basenameZip(String(row.imagePath)));
+        }
+        if (row?.cuePath) {
+          referencedBasenames.add(this.basenameZip(String(row.cuePath)));
+        }
+      }
+    }
+
+    const processedZipPaths = new Set<string>();
+
+    for (const [zipPath, entry] of Object.entries(zipContent.files)) {
+      if (entry.dir) continue;
+      const norm = zipPath.replace(/\\/g, '/');
+      if (norm.endsWith('.xml')) continue;
+      if (!ZIP_ASSET_EXT.test(norm)) continue;
+
+      const base = this.basenameZip(norm);
+
+      let match = false;
+      for (const prefix of leafPrefixes) {
+        if (prefix && norm.startsWith(prefix)) {
+          match = true;
+          break;
+        }
+      }
+      if (!match && referencedBasenames.size > 0) {
+        if (referencedBasenames.has(base)) {
+          match = true;
+        }
+      }
+      if (!match) continue;
+      if (processedZipPaths.has(norm)) continue;
+      processedZipPaths.add(norm);
+
+      try {
+        let uploadBody = await entry.async('nodebuffer');
+        let objectBasename = base;
+
+        const convertDds =
+          this.configService.get<string>('R2_DDS_CONVERT_WEBP') !== 'false';
+        if (convertDds && base.toLowerCase().endsWith('.dds')) {
+          const webpBuf = await convertDdsBufferToWebp(uploadBody);
+          if (webpBuf) {
+            uploadBody = webpBuf;
+            objectBasename = base.replace(/\.dds$/i, '.webp');
+          } else {
+            this.logger.warn(`DDS 转 WebP 失败，改为上传原始 DDS: ${norm}`);
+          }
+        }
+
+        const key = this.buildR2ObjectKey(uploadType, objectBasename);
+        const result = await this.r2Storage.putObject({
+          key,
+          body: uploadBody,
+          contentType: this.guessAssetContentType(objectBasename),
+          skipIfSameSize: true,
+        });
+        if (result === 'failed') {
+          uploadErrors.push(`上传失败: ${norm} -> ${key}`);
+        } else {
+          uploaded.push({ key, sourceZipPath: norm });
+        }
+      } catch (e) {
+        uploadErrors.push(`读取 ZIP 资源失败 ${norm}: ${(e as Error).message}`);
+      }
+    }
+
+    return { uploaded, uploadErrors };
+  }
+
+  /**
+   * 解析 ZIP 文件（解析 XML 后将同叶子目录下的贴图等资源同步至 R2）
+   */
+  private async parseZipFile(
+    buffer: Buffer,
+    type: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music',
+  ): Promise<{
+    data: any[];
+    fileCount: number;
+    errors?: string[];
+    uploadedAssets?: { key: string; sourceZipPath: string }[];
+    uploadErrors?: string[];
+  }> {
+    const zipLoader = new JSZip();
+    const zipContent = await zipLoader.loadAsync(buffer);
+
+    const leafPrefixes = new Set<string>();
+    let data: any[] = [];
+    let fileCount = 0;
+    const errors: string[] = [];
+
+    if (type === 'music') {
+      for (const [filenameRaw, file] of Object.entries(zipContent.files)) {
+        if (file.dir) continue;
+        const filename = this.normalizeZipEntryPath(filenameRaw);
+        if (!/music\/music\d+\/Music\.xml$/i.test(filename)) continue;
+        try {
+          const xmlBuffer = await file.async('nodebuffer');
+          const xmlDataArray = await this.parseXmlFile(xmlBuffer, filename, type);
+          if (xmlDataArray && Array.isArray(xmlDataArray)) {
+            data.push(...xmlDataArray);
+            fileCount += 1;
+            leafPrefixes.add(this.zipLeafDir(filename));
+          }
+        } catch (error) {
+          this.logger.error(`解析 ZIP 中的 Music.xml 文件失败: ${filename}`, error);
+          errors.push(`解析 ZIP 中的 Music.xml 文件失败: ${filename} - ${error.message}`);
+        }
+      }
+    } else {
+      const folderMapping: Record<string, string> = {
+        avatarAccessory: 'avatarAccessory',
+        mapIcon: 'mapIcon',
+        namePlate: 'namePlate',
+        systemVoice: 'systemVoice',
+        trophy: 'trophy',
       };
-      
+
       const targetFolder = folderMapping[type];
       const targetFileName = this.getTargetFileName(type);
-      
-      for (const [filename, file] of Object.entries(zipContent.files)) {
-        if (!file.dir && filename.endsWith('.xml')) {
-          // 匹配路径模式：A000/{folder}/{subfolder}/{FileName}.xml 或 A001/{folder}/{subfolder}/{FileName}.xml
-          const pathPattern = new RegExp(`A\\d{3}/${targetFolder}/[^/]+/${targetFileName}\\.xml$`, 'i');
-          
-          if (pathPattern.test(filename) || 
-              (filename.toLowerCase().includes(`${targetFolder.toLowerCase()}/`) && 
-               filename.toLowerCase().includes(`${targetFileName.toLowerCase()}.xml`))) {
-            
-            try {
-              const xmlBuffer = await file.async('nodebuffer');
-              const xmlData = await this.parseXmlFile(xmlBuffer, filename, type);
-              if (xmlData) {
-                data.push(xmlData);
-                fileCount += 1;
-              }
-            } catch (error) {
-              this.logger.error(`解析 ZIP 中的 XML 文件失败: ${filename}`, error);
-              errors.push(`解析 ZIP 中的 XML 文件失败: ${filename} - ${error.message}`);
+      const deepPattern = new RegExp(
+        `^A\\d{3}/${targetFolder}/[^/]+/${targetFileName}\\.xml$`,
+        'i',
+      );
+      const versionFlatPattern = new RegExp(
+        `^A\\d{3}/${targetFileName}\\.xml$`,
+        `i`,
+      );
+
+      for (const [filenameRaw, file] of Object.entries(zipContent.files)) {
+        if (file.dir) continue;
+        const filename = this.normalizeZipEntryPath(filenameRaw);
+        if (!/\.xml$/i.test(filename)) continue;
+
+        const lower = filename.toLowerCase();
+        const tfLower = targetFolder.toLowerCase();
+        const leafLower = targetFileName.toLowerCase();
+        const looseSubdirMatch =
+          lower.includes(`${tfLower}/`) && lower.endsWith(`/${leafLower}.xml`);
+
+        if (
+          deepPattern.test(filename) ||
+          versionFlatPattern.test(filename) ||
+          looseSubdirMatch
+        ) {
+          try {
+            const xmlBuffer = await file.async('nodebuffer');
+            const xmlData = await this.parseXmlFile(xmlBuffer, filename, type);
+            if (xmlData) {
+              data.push(xmlData);
+              fileCount += 1;
+              leafPrefixes.add(this.zipLeafDir(filename));
             }
+          } catch (error) {
+            this.logger.error(`解析 ZIP 所需的 XML 文件失败: ${filename}`, error);
+            errors.push(`解析 ZIP 所需的 XML 文件失败: ${filename} - ${error.message}`);
           }
         }
       }
     }
 
-    return { data, fileCount, errors: errors.length > 0 ? errors : undefined };
+    if (data.length === 0) {
+      const xmlPaths = Object.keys(zipContent.files).filter(
+        (p) =>
+          !zipContent.files[p].dir &&
+          p.replace(/\\/g, '/').toLowerCase().endsWith('.xml'),
+      );
+      const samples = xmlPaths.slice(0, 8).map((p) => p.replace(/\\/g, '/')).join(' | ') || '（包内无 .xml）';
+      if (type === 'music') {
+        this.logger.warn(
+          `ZIP 解析 [music] 得到 0 条：需匹配路径 music/music数字/Music.xml。包内 XML 共 ${xmlPaths.length} 个；示例: ${samples}`,
+        );
+      } else {
+        const folderMapping: Record<string, string> = {
+          avatarAccessory: 'avatarAccessory',
+          mapIcon: 'mapIcon',
+          namePlate: 'namePlate',
+          systemVoice: 'systemVoice',
+          trophy: 'trophy',
+        };
+        const folder = folderMapping[type];
+        const leafFile = this.getTargetFileName(type);
+        this.logger.warn(
+          `ZIP 解析 [${type}] 得到 0 条：可为 (1) A123/${folder}/子目录/${leafFile}.xml (2) A123/${leafFile}.xml (3) 仅一层目录 ${folder}/${leafFile}.xml；路径需使用 /。包内 XML 共 ${xmlPaths.length} 个；示例: ${samples}`,
+        );
+      }
+    }
+
+    let uploadedAssets: { key: string; sourceZipPath: string }[] | undefined;
+    let uploadErrorsOut: string[] | undefined;
+
+    if (leafPrefixes.size > 0 || data.length > 0) {
+      const sync = await this.syncZipAssetsToR2(
+        zipContent,
+        type,
+        leafPrefixes,
+        data,
+      );
+      if (sync.uploaded.length > 0) {
+        uploadedAssets = sync.uploaded;
+        this.rewriteParsedAssetPathsFromWebpUploads(data, sync.uploaded);
+      }
+      if (sync.uploadErrors.length > 0) {
+        uploadErrorsOut = sync.uploadErrors;
+      }
+    }
+
+    return {
+      data,
+      fileCount,
+      errors: errors.length > 0 ? errors : undefined,
+      uploadedAssets,
+      uploadErrors: uploadErrorsOut,
+    };
   }
 
   /**

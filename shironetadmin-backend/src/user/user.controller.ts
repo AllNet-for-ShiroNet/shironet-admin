@@ -16,7 +16,11 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserQueryDto } from './dto/user-query.dto';
 import { UserResponseDto } from './dto/user-response.dto';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { AdminOnly } from '../auth/decorators/auth.decorator';
 
+@AdminOnly()
+@ApiBearerAuth()
 @Controller('users')
 export class UserController {
   constructor(private readonly userService: UserService) {}

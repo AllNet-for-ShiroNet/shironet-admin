@@ -30,6 +30,7 @@ import {
   ChuniSystemVoice,
   ChuniTrophies,
   ChuniStaticMusic,
+  ChuniCharacterImage,
 } from './upload/entities/chuni-static.entity';
 import { ChuniProfile } from './chuni/entities/chuni-profile.entity';
 import { ChuniScore } from './chuni/entities/chuni-score.entity';
@@ -72,6 +73,7 @@ import { User } from './auth/entities/user.entity';
           ChuniSystemVoice,
           ChuniTrophies,
           ChuniStaticMusic,
+          ChuniCharacterImage,
           ChuniProfile,
           ChuniScore,
           ChuniItem,

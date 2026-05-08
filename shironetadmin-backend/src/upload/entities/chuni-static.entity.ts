@@ -162,3 +162,37 @@ export class ChuniStaticMusic {
   @Column({ length: 20, nullable: true })
   netversion: string;
 }
+
+// 人物贴图（DDSImage）实体
+@Entity('shironet_chuni_static_character')
+export class ChuniCharacterImage {
+  @PrimaryColumn()
+  id: number;
+
+  @Column({ type: 'varchar', length: 255 })
+  name: string;
+
+  @Column({ type: 'varchar', length: 255 })
+  dataName: string;
+
+  @Column({ type: 'varchar', length: 500 })
+  ddsFile0Path: string;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  ddsFile1Path: string;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  ddsFile2Path: string;
+
+  @Column({ type: 'int', nullable: true })
+  netOpenId: number;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  netOpenName: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}

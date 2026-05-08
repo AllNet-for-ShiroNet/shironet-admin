@@ -5,6 +5,7 @@ import http from '@/utils/http'
 // 上传统计接口
 export interface UploadStats {
   avatarAccessory: number
+  character: number
   mapIcon: number
   namePlate: number
   systemVoice: number
@@ -86,6 +87,7 @@ export interface DataListResponse {
 // 上传类型定义 - 与后端路由完全匹配
 export type UploadType = 
   | 'avatar-accessory'
+  | 'character'
   | 'map-icon'
   | 'name-plate'
   | 'system-voice'
@@ -95,6 +97,7 @@ export type UploadType =
 // 内部类型映射（对应后端service中的type参数）
 const INTERNAL_TYPE_MAP: Record<UploadType, string> = {
   'avatar-accessory': 'avatarAccessory',
+  'character': 'character',
   'map-icon': 'mapIcon',
   'name-plate': 'namePlate',
   'system-voice': 'systemVoice',
@@ -105,6 +108,7 @@ const INTERNAL_TYPE_MAP: Record<UploadType, string> = {
 // 清理数据类型映射（对应后端controller参数）
 const CLEAR_TYPE_MAP: Record<UploadType, string> = {
   'avatar-accessory': 'avatarAccessory',
+  'character': 'character',
   'map-icon': 'mapIcon',
   'name-plate': 'namePlate',
   'system-voice': 'systemVoice',
@@ -115,6 +119,7 @@ const CLEAR_TYPE_MAP: Record<UploadType, string> = {
 // 上传类型中文映射
 export const UPLOAD_TYPE_LABELS: Record<UploadType, string> = {
   'avatar-accessory': '企鹅装扮',
+  'character': '人物贴图',
   'map-icon': '地图图标',
   'name-plate': '姓名板',
   'system-voice': '系统语音',
@@ -125,6 +130,7 @@ export const UPLOAD_TYPE_LABELS: Record<UploadType, string> = {
 // 支持的文件类型
 export const SUPPORTED_FILE_TYPES: Record<UploadType, string[]> = {
   'avatar-accessory': ['.xml', '.zip'],
+  'character': ['.xml', '.zip'],
   'map-icon': ['.xml', '.zip'],
   'name-plate': ['.xml', '.zip'],
   'system-voice': ['.xml', '.zip'],
@@ -135,6 +141,7 @@ export const SUPPORTED_FILE_TYPES: Record<UploadType, string[]> = {
 // 检测文件类型的文件名模式
 const TYPE_DETECTION_PATTERNS: Record<string, UploadType> = {
   'AvatarAccessory': 'avatar-accessory',
+  'DDSImage': 'character',
   'MapIcon': 'map-icon', 
   'NamePlate': 'name-plate',
   'SystemVoice': 'system-voice',
@@ -146,6 +153,8 @@ const TYPE_DETECTION_PATTERNS: Record<string, UploadType> = {
 const XML_CONTENT_PATTERNS: Record<string, UploadType> = {
   'AvatarAccessoryData': 'avatar-accessory',
   'avatarAccessoryData': 'avatar-accessory',
+  'DDSImageData': 'character',
+  'ddsImageData': 'character',
   'MapIcon': 'map-icon',
   'mapIcon': 'map-icon',
   'NamePlate': 'name-plate', 
@@ -258,6 +267,9 @@ class UploadApi {
               if (lowerPart === 'avataraccessory') {
                 detectedTypes.add('avatar-accessory')
                 break
+              } else if (lowerPart === 'ddsimage') {
+                detectedTypes.add('character')
+                break
               } else if (lowerPart === 'mapicon') {
                 detectedTypes.add('map-icon')
                 break
@@ -348,6 +360,7 @@ class UploadApi {
     for (const part of pathParts) {
       const lowerPart = part.toLowerCase()
       if (lowerPart === 'avataraccessory') return 'avatar-accessory'
+      if (lowerPart === 'ddsimage') return 'character'
       if (lowerPart === 'mapicon') return 'map-icon'
       if (lowerPart === 'nameplate') return 'name-plate'
       if (lowerPart === 'systemvoice') return 'system-voice'
@@ -447,6 +460,7 @@ export const uploadDataTransform = {
   getUploadTypeIcon(type: UploadType): string {
     const iconMap: Record<UploadType, string> = {
       'avatar-accessory': 'face',
+      'character': 'person',
       'map-icon': 'map',
       'name-plate': 'badge',
       'system-voice': 'record_voice_over',
@@ -467,6 +481,12 @@ export const uploadDataTransform = {
       {
         type: 'avatar-accessory',
         count: stats.avatarAccessory,
+        totalSize: 0,
+        lastUpload: ''
+      },
+      {
+        type: 'character',
+        count: stats.character,
         totalSize: 0,
         lastUpload: ''
       },

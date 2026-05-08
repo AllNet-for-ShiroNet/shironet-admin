@@ -393,6 +393,9 @@
                 <th v-if="hasTypeInResults('avatar-accessory')" class="px-3 py-2 text-left">分类</th>
                 <th v-if="hasTypeInResults('trophies')" class="px-3 py-2 text-left">稀有度</th>
                 <th v-if="hasTypeInResults('system-voice')" class="px-3 py-2 text-left">音频路径</th>
+                <th v-if="hasTypeInResults('character')" class="px-3 py-2 text-left">DDS0</th>
+                <th v-if="hasTypeInResults('character')" class="px-3 py-2 text-left">DDS1</th>
+                <th v-if="hasTypeInResults('character')" class="px-3 py-2 text-left">DDS2</th>
                 <th v-if="hasTypeInResults('music')" class="px-3 py-2 text-left">艺术家</th>
                 <th v-if="hasTypeInResults('music')" class="px-3 py-2 text-left">Genre</th>
                 <th v-if="hasTypeInResults('music')" class="px-3 py-2 text-left">难度</th>
@@ -425,6 +428,21 @@
                     {{ item.cuePath }}
                   </div>
                 </td>
+                <td v-if="hasTypeInResults('character')" class="px-3 py-2 max-w-xs">
+                  <div class="text-xs truncate" :title="item.ddsFile0Path">
+                    {{ item.ddsFile0Path }}
+                  </div>
+                </td>
+                <td v-if="hasTypeInResults('character')" class="px-3 py-2 max-w-xs">
+                  <div class="text-xs truncate" :title="item.ddsFile1Path">
+                    {{ item.ddsFile1Path }}
+                  </div>
+                </td>
+                <td v-if="hasTypeInResults('character')" class="px-3 py-2 max-w-xs">
+                  <div class="text-xs truncate" :title="item.ddsFile2Path">
+                    {{ item.ddsFile2Path }}
+                  </div>
+                </td>
                 <td v-if="hasTypeInResults('music')" class="px-3 py-2 max-w-sm">
                   <div class="truncate" :title="item.artist">
                     {{ item.artist }}
@@ -449,7 +467,7 @@
                   </el-tag>
                   <span v-else class="text-gray-400">-</span>
                 </td>
-                <td v-if="!hasTypeInResults('trophies') && !hasTypeInResults('music')" class="px-3 py-2 max-w-xs">
+                <td v-if="!hasTypeInResults('trophies') && !hasTypeInResults('music') && !hasTypeInResults('character')" class="px-3 py-2 max-w-xs">
                   <div class="text-xs truncate" :title="item.imagePath">
                     {{ item.imagePath }}
                   </div>
@@ -819,6 +837,7 @@ const uploadForm = reactive<UploadForm>({
 
 const uploadStats = ref<UploadStats>({
   avatarAccessory: 0,
+  character: 0,
   mapIcon: 0,
   namePlate: 0,
   systemVoice: 0,
@@ -932,6 +951,9 @@ const getProcessedTypesDisplay = () => {
     if (firstItem.category !== undefined && firstItem.imagePath !== undefined) {
       return UPLOAD_TYPE_LABELS['avatar-accessory']
     }
+    if (firstItem.ddsFile0Path !== undefined) {
+      return UPLOAD_TYPE_LABELS['character']
+    }
     if (firstItem.rareType !== undefined) {
       return UPLOAD_TYPE_LABELS['trophies']
     }
@@ -986,6 +1008,8 @@ const hasTypeInResults = (type: UploadType) => {
         return firstItem.songId !== undefined && firstItem.chartId !== undefined
       case 'avatar-accessory':
         return firstItem.category !== undefined && firstItem.imagePath !== undefined
+      case 'character':
+        return firstItem.ddsFile0Path !== undefined
       case 'trophies':
         return firstItem.rareType !== undefined
       case 'system-voice':

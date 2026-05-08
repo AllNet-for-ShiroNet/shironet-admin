@@ -12,6 +12,7 @@ import {
   ChuniSystemVoice,
   ChuniTrophies,
   ChuniStaticMusic,
+  ChuniCharacterImage,
 } from './entities/chuni-static.entity';
 
 @Module({
@@ -25,6 +26,7 @@ import {
       ChuniSystemVoice,
       ChuniTrophies,
       ChuniStaticMusic,
+      ChuniCharacterImage,
     ]),
     MulterModule.register({
       limits: {

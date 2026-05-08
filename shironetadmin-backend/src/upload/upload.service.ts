@@ -18,6 +18,7 @@ import {
   ChuniSystemVoice,
   ChuniTrophies,
   ChuniStaticMusic,
+  ChuniCharacterImage,
 } from './entities/chuni-static.entity';
 import {
   ImportAvatarAccessoryDto,
@@ -32,6 +33,8 @@ import {
   BatchImportSystemVoiceDto,
   BatchImportTrophiesDto,
   BatchImportMusicDto,
+  ImportCharacterDto,
+  BatchImportCharacterDto,
   XmlParseResultDto,
   ImportResultDto,
 } from './dto/upload.dto';
@@ -64,6 +67,9 @@ export class UploadService {
     @InjectRepository(ChuniStaticMusic)
     private musicRepository: Repository<ChuniStaticMusic>,
 
+    @InjectRepository(ChuniCharacterImage)
+    private characterRepository: Repository<ChuniCharacterImage>,
+
     private readonly configService: ConfigService,
     @Inject(R2_STATICSTOR) private readonly r2Storage: R2StorageService,
   ) {}
@@ -73,7 +79,7 @@ export class UploadService {
    */
   async parseUploadedFiles(
     files: Express.Multer.File[],
-    type: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music'
+    type: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'character'
   ): Promise<XmlParseResultDto> {
     this.logger.log(`解析上传文件，类型: ${type}, 文件数量: ${files.length}`);
 
@@ -160,7 +166,7 @@ export class UploadService {
 
   /** 与桶内实测及 CDN 路径约定一致：name-plate 在桶根；其余在 R2_KEY_PREFIX_GAME_TREE/{category}/ */
   private buildR2ObjectKey(
-    uploadType: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music',
+    uploadType: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'character',
     fileBasename: string,
   ): string {
     const platePrefix = (
@@ -168,6 +174,9 @@ export class UploadService {
     ).replace(/^\/+|\/+$/g, '');
     const gameTree = (
       this.configService.get<string>('R2_KEY_PREFIX_GAME_TREE') ?? 'chuni/chuni'
+    ).replace(/^\/+|\/+$/g, '');
+    const characterPrefix = (
+      this.configService.get<string>('R2_KEY_PREFIX_CHARACTER') ?? 'chuni/character'
     ).replace(/^\/+|\/+$/g, '');
 
     const categoryByType: Record<string, string> = {
@@ -181,6 +190,9 @@ export class UploadService {
 
     if (uploadType === 'namePlate') {
       return `${platePrefix}/${fileBasename}`;
+    }
+    if (uploadType === 'character') {
+      return `${characterPrefix}/${fileBasename}`;
     }
     const cat = categoryByType[uploadType] ?? 'misc';
     return `${gameTree}/${cat}/${fileBasename}`;
@@ -197,7 +209,7 @@ export class UploadService {
       const srcBase = this.basenameZip(item.sourceZipPath);
       const destBase = this.basenameZip(item.key);
       for (const row of parsedData) {
-        for (const field of ['imagePath', 'cuePath', 'jacketPath'] as const) {
+        for (const field of ['imagePath', 'cuePath', 'jacketPath', 'ddsFile0Path', 'ddsFile1Path', 'ddsFile2Path'] as const) {
           const v = row[field];
           if (v == null || v === '') continue;
           if (this.basenameZip(String(v)) === srcBase) {
@@ -210,7 +222,7 @@ export class UploadService {
 
   private async syncZipAssetsToR2(
     zipContent: JSZip,
-    uploadType: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music',
+    uploadType: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'character',
     leafPrefixes: Set<string>,
     parsedData: any[],
   ): Promise<{ uploaded: { key: string; sourceZipPath: string }[]; uploadErrors: string[] }> {
@@ -229,6 +241,14 @@ export class UploadService {
       for (const row of parsedData) {
         if (row?.jacketPath) {
           referencedBasenames.add(this.basenameZip(String(row.jacketPath)));
+        }
+      }
+    } else if (uploadType === 'character') {
+      for (const row of parsedData) {
+        for (const key of ['ddsFile0Path', 'ddsFile1Path', 'ddsFile2Path'] as const) {
+          if (row?.[key]) {
+            referencedBasenames.add(this.basenameZip(String(row[key])));
+          }
         }
       }
     } else {
@@ -309,7 +329,7 @@ export class UploadService {
    */
   private async parseZipFile(
     buffer: Buffer,
-    type: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music',
+    type: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'character',
   ): Promise<{
     data: any[];
     fileCount: number;
@@ -346,6 +366,7 @@ export class UploadService {
     } else {
       const folderMapping: Record<string, string> = {
         avatarAccessory: 'avatarAccessory',
+        character: 'ddsImage',
         mapIcon: 'mapIcon',
         namePlate: 'namePlate',
         systemVoice: 'systemVoice',
@@ -409,6 +430,7 @@ export class UploadService {
       } else {
         const folderMapping: Record<string, string> = {
           avatarAccessory: 'avatarAccessory',
+          character: 'ddsImage',
           mapIcon: 'mapIcon',
           namePlate: 'namePlate',
           systemVoice: 'systemVoice',
@@ -456,6 +478,7 @@ export class UploadService {
   private getTargetFileName(type: string): string {
     const fileNameMapping = {
       'avatarAccessory': 'AvatarAccessory',
+      'character': 'DDSImage',
       'mapIcon': 'MapIcon',
       'namePlate': 'NamePlate',
       'systemVoice': 'SystemVoice', 
@@ -497,6 +520,9 @@ export class UploadService {
       switch (type) {
         case 'avatarAccessory':
           result = this.extractAvatarAccessoryData(parsed);
+          break;
+        case 'character':
+          result = this.extractCharacterData(parsed);
           break;
         case 'mapIcon':
           result = this.extractMapIconData(parsed);
@@ -583,7 +609,12 @@ export class UploadService {
   private extractAvatarAccessoryData(parsed: any): ImportAvatarAccessoryDto | null {
     try {
       let root = parsed;
-      const possibleRoots = ['AvatarAccessoryData', 'avatarAccessoryData', 'AvatarAccessory', 'avatarAccessory'];
+      const possibleRoots = [
+        'AvatarAccessoryData',
+        'avatarAccessoryData',
+        'AvatarAccessory',
+        'avatarAccessory',
+      ];
       
       for (const rootName of possibleRoots) {
         if (parsed[rootName]) {
@@ -594,9 +625,15 @@ export class UploadService {
 
       const id = this.extractValue(root, ['name', 'id'], 'number') || 0;
       const name = this.extractValue(root, ['name', 'str'], 'string') || '';
-      const sortName = this.extractValue(root, ['sortName'], 'string') || '';
+      const sortName =
+        this.extractValue(root, ['sortName'], 'string') ||
+        this.extractValue(root, ['dataName'], 'string') ||
+        name;
       const category = this.extractValue(root, ['category'], 'number') || 0;
-      const imagePath = this.extractValue(root, ['image', 'path'], 'string') || '';
+      const imagePath =
+        this.extractValue(root, ['image', 'path'], 'string') ||
+        this.extractValue(root, ['ddsFile0', 'path'], 'string') ||
+        '';
 
       this.logger.debug('头像配饰数据提取结果:', { id, name, sortName, category, imagePath });
 
@@ -609,6 +646,54 @@ export class UploadService {
       };
     } catch (error) {
       this.logger.error('提取头像配饰数据失败', error);
+      return null;
+    }
+  }
+
+  /**
+   * 提取人物贴图数据（DDSImage）
+   */
+  private extractCharacterData(parsed: any): ImportCharacterDto | null {
+    try {
+      const root = parsed.DDSImageData || parsed.ddsImageData;
+      if (!root) return null;
+
+      const id = this.extractValue(root, ['name', 'id'], 'number') || 0;
+      const name = this.extractValue(root, ['name', 'str'], 'string') || '';
+      const dataName = this.extractValue(root, ['dataName'], 'string') || '';
+      const ddsFile0Path = this.extractValue(root, ['ddsFile0', 'path'], 'string') || '';
+      const ddsFile1Path = this.extractValue(root, ['ddsFile1', 'path'], 'string') || '';
+      const ddsFile2Path = this.extractValue(root, ['ddsFile2', 'path'], 'string') || '';
+      const netOpenId = this.extractValue(root, ['netOpenName', 'id'], 'number') || 0;
+      const netOpenName = this.extractValue(root, ['netOpenName', 'str'], 'string') || '';
+
+      if (!ddsFile0Path) {
+        return null;
+      }
+
+      this.logger.debug('人物贴图数据提取结果:', {
+        id,
+        name,
+        dataName,
+        ddsFile0Path,
+        ddsFile1Path,
+        ddsFile2Path,
+        netOpenId,
+        netOpenName,
+      });
+
+      return {
+        id,
+        name,
+        dataName,
+        ddsFile0Path,
+        ddsFile1Path,
+        ddsFile2Path,
+        netOpenId,
+        netOpenName,
+      };
+    } catch (error) {
+      this.logger.error('提取人物贴图数据失败', error);
       return null;
     }
   }
@@ -1137,11 +1222,70 @@ export class UploadService {
   }
 
   /**
+   * 批量导入人物贴图数据
+   */
+  async batchImportCharacter(batchData: BatchImportCharacterDto): Promise<ImportResultDto> {
+    this.logger.log(`批量导入人物贴图，数量: ${batchData.data.length}`);
+
+    let success = 0;
+    let failed = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (const item of batchData.data) {
+      try {
+        await this.characterRepository
+          .createQueryBuilder()
+          .insert()
+          .into(ChuniCharacterImage)
+          .values({
+            id: item.id,
+            name: item.name,
+            dataName: item.dataName,
+            ddsFile0Path: item.ddsFile0Path,
+            ddsFile1Path: item.ddsFile1Path ?? '',
+            ddsFile2Path: item.ddsFile2Path ?? '',
+            netOpenId: item.netOpenId ?? 0,
+            netOpenName: item.netOpenName ?? '',
+          })
+          .orUpdate(
+            [
+              'name',
+              'dataName',
+              'ddsFile0Path',
+              'ddsFile1Path',
+              'ddsFile2Path',
+              'netOpenId',
+              'netOpenName',
+            ],
+            ['id'],
+          )
+          .execute();
+
+        success++;
+      } catch (error) {
+        this.logger.error(`导入人物贴图失败 ID: ${item.id}`, error);
+        errors.push(`导入人物贴图失败 ID: ${item.id} - ${error.message}`);
+        failed++;
+      }
+    }
+
+    return {
+      success,
+      failed,
+      skipped,
+      total: batchData.data.length,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  }
+
+  /**
    * 获取导入统计信息
    */
   async getImportStats(): Promise<any> {
-    const [avatarAccessoryCount, mapIconCount, namePlateCount, systemVoiceCount, trophiesCount, musicCount] = await Promise.all([
+    const [avatarAccessoryCount, characterCount, mapIconCount, namePlateCount, systemVoiceCount, trophiesCount, musicCount] = await Promise.all([
       this.avatarAccessoryRepository.count(),
+      this.characterRepository.count(),
       this.mapIconRepository.count(),
       this.namePlateRepository.count(),
       this.systemVoiceRepository.count(),
@@ -1151,12 +1295,13 @@ export class UploadService {
 
     return {
       avatarAccessory: avatarAccessoryCount,
+      character: characterCount,
       mapIcon: mapIconCount,
       namePlate: namePlateCount,
       systemVoice: systemVoiceCount,
       trophies: trophiesCount,
       music: musicCount,
-      total: avatarAccessoryCount + mapIconCount + namePlateCount + systemVoiceCount + trophiesCount + musicCount,
+      total: avatarAccessoryCount + characterCount + mapIconCount + namePlateCount + systemVoiceCount + trophiesCount + musicCount,
     };
   }
 
@@ -1175,6 +1320,7 @@ export class UploadService {
     // 映射类型到对应的仓库
     const typeMap = {
       'avatar-accessory': this.avatarAccessoryRepository,
+      'character': this.characterRepository,
       'map-icon': this.mapIconRepository,
       'name-plate': this.namePlateRepository,
       'system-voice': this.systemVoiceRepository,
@@ -1200,7 +1346,7 @@ export class UploadService {
   /**
    * 清空指定类型的数据
    */
-  async clearData(type: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophies' | 'music'): Promise<void> {
+  async clearData(type: 'avatarAccessory' | 'character' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophies' | 'music'): Promise<void> {
     this.logger.log(`清空数据类型: ${type}`);
     
     try {
@@ -1210,6 +1356,9 @@ export class UploadService {
           break;
         case 'mapIcon':
           await this.mapIconRepository.clear();
+          break;
+        case 'character':
+          await this.characterRepository.clear();
           break;
         case 'namePlate':
           await this.namePlateRepository.clear();

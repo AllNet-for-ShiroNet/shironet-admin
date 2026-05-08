@@ -33,6 +33,7 @@ import {
   BatchImportSystemVoiceDto,
   BatchImportTrophiesDto,
   BatchImportMusicDto,
+  BatchImportCharacterDto,
   XmlParseResultDto,
   ImportResultDto,
 } from './dto/upload.dto';
@@ -233,6 +234,25 @@ export class UploadController {
     };
   }
 
+  @Post('character')
+  @ApiOperation({ summary: '上传人物贴图 DDSImage XML 文件' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('files', 20))
+  async uploadCharacterFiles(
+    @UploadedFiles() files: Express.Multer.File[],
+  ): Promise<{ success: boolean; data: XmlParseResultDto; message: string }> {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('请选择要上传的文件');
+    }
+
+    const result = await this.uploadService.parseUploadedFiles(files, 'character');
+    return {
+      success: true,
+      data: result,
+      message: this.formatParseMessage(result),
+    };
+  }
+
   @Post('batch/avatar-accessory')
   @ApiOperation({ summary: '批量导入头像配饰数据' })
   @ApiResponse({
@@ -327,6 +347,20 @@ export class UploadController {
     };
   }
 
+  @Post('batch/character')
+  @ApiOperation({ summary: '批量导入人物贴图数据' })
+  @ApiBody({ type: BatchImportCharacterDto })
+  async batchImportCharacter(
+    @Body() batchData: BatchImportCharacterDto,
+  ): Promise<{ success: boolean; data: ImportResultDto; message: string }> {
+    const result = await this.uploadService.batchImportCharacter(batchData);
+    return {
+      success: true,
+      data: result,
+      message: `导入完成：成功 ${result.success} 条，失败 ${result.failed} 条`,
+    };
+  }
+
   @Get('stats')
   @ApiOperation({ summary: '获取导入统计信息' })
   @ApiResponse({
@@ -347,7 +381,7 @@ export class UploadController {
   @ApiParam({
     name: 'type',
     description: '数据类型',
-    enum: ['avatar-accessory', 'map-icon', 'name-plate', 'system-voice', 'trophies', 'music'],
+    enum: ['avatar-accessory', 'character', 'map-icon', 'name-plate', 'system-voice', 'trophies', 'music'],
   })
   @ApiQuery({ name: 'page', required: false, description: '页码' })
   @ApiQuery({ name: 'pageSize', required: false, description: '每页数量' })
@@ -370,14 +404,14 @@ export class UploadController {
   @ApiParam({
     name: 'type',
     description: '数据类型',
-    enum: ['avatarAccessory', 'mapIcon', 'namePlate', 'systemVoice', 'trophies', 'music'],
+    enum: ['avatarAccessory', 'character', 'mapIcon', 'namePlate', 'systemVoice', 'trophies', 'music'],
   })
   @ApiResponse({
     status: 200,
     description: '清空成功',
   })
   async clearData(
-    @Param('type') type: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophies' | 'music',
+    @Param('type') type: 'avatarAccessory' | 'character' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophies' | 'music',
   ): Promise<{ success: boolean; message: string }> {
     await this.uploadService.clearData(type);
     return {

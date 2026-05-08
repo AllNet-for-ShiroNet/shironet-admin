@@ -147,6 +147,53 @@ export class ImportMusicDto {
   netversion: string;
 }
 
+// 人物贴图（DDSImage）导入 DTO
+export class ImportCharacterDto {
+  @ApiProperty({ description: 'ID' })
+  @IsInt()
+  @Min(0)
+  id: number;
+
+  @ApiProperty({ description: '名称', maxLength: 255 })
+  @IsString()
+  @MaxLength(255)
+  name: string;
+
+  @ApiProperty({ description: '数据名', maxLength: 255 })
+  @IsString()
+  @MaxLength(255)
+  dataName: string;
+
+  @ApiProperty({ description: '主贴图路径', maxLength: 500 })
+  @IsString()
+  @MaxLength(500)
+  ddsFile0Path: string;
+
+  @ApiPropertyOptional({ description: '副贴图路径1', maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  ddsFile1Path?: string;
+
+  @ApiPropertyOptional({ description: '副贴图路径2', maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  ddsFile2Path?: string;
+
+  @ApiPropertyOptional({ description: '开放版本 ID' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  netOpenId?: number;
+
+  @ApiPropertyOptional({ description: '开放版本名', maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  netOpenName?: string;
+}
+
 // 批量导入 DTO
 export class BatchImportAvatarAccessoryDto {
   @ApiProperty({ description: '头像配饰数据数组', type: [ImportAvatarAccessoryDto] })
@@ -199,6 +246,14 @@ export class BatchImportMusicDto {
   @ValidateNested({ each: true })
   @Type(() => ImportMusicDto)
   data: ImportMusicDto[];
+}
+
+export class BatchImportCharacterDto {
+  @ApiProperty({ description: '人物贴图数据数组', type: [ImportCharacterDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ImportCharacterDto)
+  data: ImportCharacterDto[];
 }
 
 export class UploadedAssetDto {

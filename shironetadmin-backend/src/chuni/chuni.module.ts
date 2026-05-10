@@ -6,11 +6,20 @@ import { ChuniService } from './chuni.service';
 import { ChuniProfile } from './entities/chuni-profile.entity';
 import { ChuniScore } from './entities/chuni-score.entity';
 import { ChuniItem } from './entities/chuni-item.entity';
+import { ChuniStaticCharacter } from './entities/chuni-static-character.entity';
+import { ChuniItemCharacter } from './entities/chuni-item-character.entity';
 import { AimeUser } from '../user/entities/aime-user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ChuniProfile, ChuniScore, ChuniItem, AimeUser])
+    TypeOrmModule.forFeature([
+      ChuniProfile,
+      ChuniScore,
+      ChuniItem,
+      ChuniStaticCharacter,
+      ChuniItemCharacter,
+      AimeUser,
+    ]),
   ],
   controllers: [ChuniController],
   providers: [ChuniService],

@@ -30,13 +30,15 @@ import {
   ChuniSystemVoice,
   ChuniTrophies,
   ChuniStaticMusic,
-  ChuniCharacterImage,
 } from './upload/entities/chuni-static.entity';
 import { ChuniProfile } from './chuni/entities/chuni-profile.entity';
 import { ChuniScore } from './chuni/entities/chuni-score.entity';
 import { ChuniItem } from './chuni/entities/chuni-item.entity';
+import { ChuniStaticCharacter } from './chuni/entities/chuni-static-character.entity';
+import { ChuniItemCharacter } from './chuni/entities/chuni-item-character.entity';
+import { ShironetCharacter } from './auth/entities/shironet-character.entity';
 
-// shironet 数据库实体
+// shironet 数据库实体（认证用户）
 import { User } from './auth/entities/user.entity';
 
 @Module({
@@ -73,10 +75,12 @@ import { User } from './auth/entities/user.entity';
           ChuniSystemVoice,
           ChuniTrophies,
           ChuniStaticMusic,
-          ChuniCharacterImage,
           ChuniProfile,
           ChuniScore,
           ChuniItem,
+          ChuniStaticCharacter,
+          ChuniItemCharacter,
+          ShironetCharacter,
         ],
         synchronize: false,
         migrationsRun: false,
@@ -98,7 +102,7 @@ import { User } from './auth/entities/user.entity';
         username: configService.get<string>('SHIRO_DB_USERNAME', 'root'),
         password: configService.get<string>('SHIRO_DB_PASSWORD', ''),
         database: configService.get<string>('SHIRO_DB_DATABASE', 'shironet'),
-        entities: [User], // 只包含认证相关的实体
+        entities: [User],
         synchronize: false,
         migrationsRun: false,
         logging: configService.get('NODE_ENV') === 'development',

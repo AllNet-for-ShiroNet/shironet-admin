@@ -14,7 +14,7 @@ import { RolesGuard } from './guards/roles.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User], 'shironet'), // 指定使用 shironet 连接
+    TypeOrmModule.forFeature([User], 'shironet'),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

@@ -147,6 +147,80 @@ export class ImportMusicDto {
   netversion: string;
 }
 
+// chuni_static_character（Chara.xml / CharaData）导入 DTO
+export class ImportChuniStaticCharacterDto {
+  @ApiProperty({ description: '静态角色主键（通常为游戏 name.id 的字符串形式）' })
+  @IsString()
+  @MaxLength(255)
+  characterId: string;
+
+  @ApiProperty({ description: '版本（多为 releaseTagName.id）' })
+  @IsInt()
+  @Min(0)
+  version: number;
+
+  @ApiProperty({ description: '显示名', maxLength: 255 })
+  @IsString()
+  @MaxLength(255)
+  name: string;
+
+  @ApiPropertyOptional({ description: '排序名', maxLength: 255 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  sortName?: string | null;
+
+  @ApiPropertyOptional({ description: '作品名', maxLength: 255 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  worksName?: string | null;
+
+  @ApiPropertyOptional({ description: '稀有度（字符串存储）', maxLength: 255 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  rareType?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'UI 立绘 0 槽（CHU_UI_Character_{seg4}_{costume}_{00}.dds：优先 defaultImages.str 如 chara5095_XX 解析 seg；否则 id≥10000 用 ⌊id/10⌋取 seg）',
+    maxLength: 255,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  imagePath1?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'UI 立绘 1 槽（…_{01}.dds；addImages1.image.id 有效时参与首段，否则同默认段）',
+    maxLength: 255,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  imagePath2?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'UI 立绘 2 槽（…_{02}.dds；addImages2.image.id 有效时参与首段）',
+    maxLength: 255,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  imagePath3?: string | null;
+
+  @ApiPropertyOptional({ description: '是否启用' })
+  @IsOptional()
+  isEnabled?: boolean | null;
+
+  @ApiPropertyOptional({ description: '是否默认持有' })
+  @IsOptional()
+  defaultHave?: boolean | null;
+}
+
 // 人物贴图（DDSImage）导入 DTO
 export class ImportCharacterDto {
   @ApiProperty({ description: 'ID' })
@@ -249,11 +323,11 @@ export class BatchImportMusicDto {
 }
 
 export class BatchImportCharacterDto {
-  @ApiProperty({ description: '人物贴图数据数组', type: [ImportCharacterDto] })
+  @ApiProperty({ description: 'Chara.xml 静态角色（chuni_static_character）', type: [ImportChuniStaticCharacterDto] })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ImportCharacterDto)
-  data: ImportCharacterDto[];
+  @Type(() => ImportChuniStaticCharacterDto)
+  data: ImportChuniStaticCharacterDto[];
 }
 
 export class UploadedAssetDto {

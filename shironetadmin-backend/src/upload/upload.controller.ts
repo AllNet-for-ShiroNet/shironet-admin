@@ -234,8 +234,27 @@ export class UploadController {
     };
   }
 
+  @Post('character-texture')
+  @ApiOperation({ summary: '上传人物贴图（DDSImage.xml / ZIP，解析并同步资源至 R2，不入库）' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('files', 20))
+  async uploadCharacterTextureFiles(
+    @UploadedFiles() files: Express.Multer.File[],
+  ): Promise<{ success: boolean; data: XmlParseResultDto; message: string }> {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('请选择要上传的文件');
+    }
+
+    const result = await this.uploadService.parseUploadedFiles(files, 'characterTexture');
+    return {
+      success: true,
+      data: result,
+      message: this.formatParseMessage(result),
+    };
+  }
+
   @Post('character')
-  @ApiOperation({ summary: '上传人物贴图 DDSImage XML 文件' })
+  @ApiOperation({ summary: '上传静态角色（Chara.xml / ZIP → chuni_static_character）' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FilesInterceptor('files', 20))
   async uploadCharacterFiles(
@@ -348,7 +367,7 @@ export class UploadController {
   }
 
   @Post('batch/character')
-  @ApiOperation({ summary: '批量导入人物贴图数据' })
+  @ApiOperation({ summary: '批量导入静态角色（Chara.xml → chuni_static_character）' })
   @ApiBody({ type: BatchImportCharacterDto })
   async batchImportCharacter(
     @Body() batchData: BatchImportCharacterDto,
@@ -381,7 +400,16 @@ export class UploadController {
   @ApiParam({
     name: 'type',
     description: '数据类型',
-    enum: ['avatar-accessory', 'character', 'map-icon', 'name-plate', 'system-voice', 'trophies', 'music'],
+    enum: [
+      'avatar-accessory',
+      'character-texture',
+      'character',
+      'map-icon',
+      'name-plate',
+      'system-voice',
+      'trophies',
+      'music',
+    ],
   })
   @ApiQuery({ name: 'page', required: false, description: '页码' })
   @ApiQuery({ name: 'pageSize', required: false, description: '每页数量' })
@@ -404,14 +432,23 @@ export class UploadController {
   @ApiParam({
     name: 'type',
     description: '数据类型',
-    enum: ['avatarAccessory', 'character', 'mapIcon', 'namePlate', 'systemVoice', 'trophies', 'music'],
+    enum: [
+      'avatarAccessory',
+      'characterTexture',
+      'character',
+      'mapIcon',
+      'namePlate',
+      'systemVoice',
+      'trophies',
+      'music',
+    ],
   })
   @ApiResponse({
     status: 200,
     description: '清空成功',
   })
   async clearData(
-    @Param('type') type: 'avatarAccessory' | 'character' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophies' | 'music',
+    @Param('type') type: 'avatarAccessory' | 'characterTexture' | 'character' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophies' | 'music',
   ): Promise<{ success: boolean; message: string }> {
     await this.uploadService.clearData(type);
     return {

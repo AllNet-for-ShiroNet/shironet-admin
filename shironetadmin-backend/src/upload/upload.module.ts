@@ -12,8 +12,9 @@ import {
   ChuniSystemVoice,
   ChuniTrophies,
   ChuniStaticMusic,
-  ChuniCharacterImage,
 } from './entities/chuni-static.entity';
+import { ChuniStaticCharacter } from '../chuni/entities/chuni-static-character.entity';
+import { ShironetCharacter } from '../auth/entities/shironet-character.entity';
 
 @Module({
   imports: [
@@ -26,8 +27,9 @@ import {
       ChuniSystemVoice,
       ChuniTrophies,
       ChuniStaticMusic,
-      ChuniCharacterImage,
+      ChuniStaticCharacter,
     ]),
+    TypeOrmModule.forFeature([ShironetCharacter]),
     MulterModule.register({
       limits: {
         fileSize: 300 * 1024 * 1024,

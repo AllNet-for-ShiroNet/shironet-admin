@@ -393,21 +393,24 @@
                 <th v-if="hasTypeInResults('avatar-accessory')" class="px-3 py-2 text-left">分类</th>
                 <th v-if="hasTypeInResults('trophies')" class="px-3 py-2 text-left">稀有度</th>
                 <th v-if="hasTypeInResults('system-voice')" class="px-3 py-2 text-left">音频路径</th>
-                <th v-if="hasTypeInResults('character')" class="px-3 py-2 text-left">DDS0</th>
-                <th v-if="hasTypeInResults('character')" class="px-3 py-2 text-left">DDS1</th>
-                <th v-if="hasTypeInResults('character')" class="px-3 py-2 text-left">DDS2</th>
+                <th v-if="hasTypeInResults('character-texture')" class="px-3 py-2 text-left">DDS0</th>
+                <th v-if="hasTypeInResults('character-texture')" class="px-3 py-2 text-left">DDS1</th>
+                <th v-if="hasTypeInResults('character-texture')" class="px-3 py-2 text-left">DDS2</th>
+                <th v-if="hasTypeInResults('character')" class="px-3 py-2 text-left">版本</th>
+                <th v-if="hasTypeInResults('character')" class="px-3 py-2 text-left">稀有度</th>
+                <th v-if="hasTypeInResults('character')" class="px-3 py-2 text-left">默认图</th>
                 <th v-if="hasTypeInResults('music')" class="px-3 py-2 text-left">艺术家</th>
                 <th v-if="hasTypeInResults('music')" class="px-3 py-2 text-left">Genre</th>
                 <th v-if="hasTypeInResults('music')" class="px-3 py-2 text-left">难度</th>
                 <th v-if="hasTypeInResults('music')" class="px-3 py-2 text-left">等级</th>
                 <th v-if="hasTypeInResults('music')" class="px-3 py-2 text-left">World's End</th>
-                <th v-if="!hasTypeInResults('trophies') && !hasTypeInResults('music')" class="px-3 py-2 text-left">图片路径</th>
+                <th v-if="!hasTypeInResults('trophies') && !hasTypeInResults('music') && !hasTypeInResults('character') && !hasTypeInResults('character-texture')" class="px-3 py-2 text-left">图片路径</th>
               </tr>
             </thead>
             <tbody>
               <tr 
                 v-for="(item, index) in paginatedData" 
-                :key="`${item.id || item.songId}-${item.chartId || index}`"
+                :key="`${item.characterId || item.id || item.songId}-${item.chartId ?? ''}-${index}`"
                 :class="[
                   'border-b transition-colors',
                   isDark 
@@ -415,7 +418,7 @@
                     : 'border-gray-100 hover:bg-gray-50 text-gray-900'
                 ]"
               >
-                <td class="px-3 py-2">{{ item.id || item.songId }}</td>
+                <td class="px-3 py-2">{{ item.characterId ?? item.id ?? item.songId }}</td>
                 <td class="px-3 py-2 max-w-xs">
                   <div class="truncate" :title="item.name || item.title">
                     {{ item.name || item.title }}
@@ -428,19 +431,26 @@
                     {{ item.cuePath }}
                   </div>
                 </td>
-                <td v-if="hasTypeInResults('character')" class="px-3 py-2 max-w-xs">
+                <td v-if="hasTypeInResults('character-texture')" class="px-3 py-2 max-w-xs">
                   <div class="text-xs truncate" :title="item.ddsFile0Path">
                     {{ item.ddsFile0Path }}
                   </div>
                 </td>
-                <td v-if="hasTypeInResults('character')" class="px-3 py-2 max-w-xs">
+                <td v-if="hasTypeInResults('character-texture')" class="px-3 py-2 max-w-xs">
                   <div class="text-xs truncate" :title="item.ddsFile1Path">
                     {{ item.ddsFile1Path }}
                   </div>
                 </td>
-                <td v-if="hasTypeInResults('character')" class="px-3 py-2 max-w-xs">
+                <td v-if="hasTypeInResults('character-texture')" class="px-3 py-2 max-w-xs">
                   <div class="text-xs truncate" :title="item.ddsFile2Path">
                     {{ item.ddsFile2Path }}
+                  </div>
+                </td>
+                <td v-if="hasTypeInResults('character')" class="px-3 py-2">{{ item.version }}</td>
+                <td v-if="hasTypeInResults('character')" class="px-3 py-2">{{ item.rareType ?? '-' }}</td>
+                <td v-if="hasTypeInResults('character')" class="px-3 py-2 max-w-xs">
+                  <div class="text-xs truncate" :title="item.imagePath1">
+                    {{ item.imagePath1 ?? '-' }}
                   </div>
                 </td>
                 <td v-if="hasTypeInResults('music')" class="px-3 py-2 max-w-sm">
@@ -467,7 +477,7 @@
                   </el-tag>
                   <span v-else class="text-gray-400">-</span>
                 </td>
-                <td v-if="!hasTypeInResults('trophies') && !hasTypeInResults('music') && !hasTypeInResults('character')" class="px-3 py-2 max-w-xs">
+                <td v-if="!hasTypeInResults('trophies') && !hasTypeInResults('music') && !hasTypeInResults('character') && !hasTypeInResults('character-texture')" class="px-3 py-2 max-w-xs">
                   <div class="text-xs truncate" :title="item.imagePath">
                     {{ item.imagePath }}
                   </div>
@@ -951,8 +961,18 @@ const getProcessedTypesDisplay = () => {
     if (firstItem.category !== undefined && firstItem.imagePath !== undefined) {
       return UPLOAD_TYPE_LABELS['avatar-accessory']
     }
-    if (firstItem.ddsFile0Path !== undefined) {
+    if (
+      typeof firstItem.characterId === 'string' &&
+      firstItem.characterId.length > 0 &&
+      typeof firstItem.version === 'number'
+    ) {
       return UPLOAD_TYPE_LABELS['character']
+    }
+    if (
+      firstItem.ddsFile0Path !== undefined &&
+      String(firstItem.ddsFile0Path).length > 0
+    ) {
+      return UPLOAD_TYPE_LABELS['character-texture']
     }
     if (firstItem.rareType !== undefined) {
       return UPLOAD_TYPE_LABELS['trophies']
@@ -1008,10 +1028,22 @@ const hasTypeInResults = (type: UploadType) => {
         return firstItem.songId !== undefined && firstItem.chartId !== undefined
       case 'avatar-accessory':
         return firstItem.category !== undefined && firstItem.imagePath !== undefined
+      case 'character-texture':
+        return (
+          firstItem.ddsFile0Path !== undefined &&
+          String(firstItem.ddsFile0Path).length > 0
+        )
       case 'character':
-        return firstItem.ddsFile0Path !== undefined
+        return (
+          typeof firstItem.characterId === 'string' &&
+          firstItem.characterId.length > 0 &&
+          typeof firstItem.version === 'number'
+        )
       case 'trophies':
-        return firstItem.rareType !== undefined
+        return (
+          typeof firstItem.rareType === 'number' &&
+          'explainText' in firstItem
+        )
       case 'system-voice':
         return firstItem.cuePath !== undefined
       case 'map-icon':
@@ -1021,6 +1053,83 @@ const hasTypeInResults = (type: UploadType) => {
   }
   
   return false
+}
+
+/** 合并 ZIP / 多类型解析后的扁平数组里仅挑出当前批量导入类型对应字段的行（避免 ValidationPipe forbidNonWhitelisted 400） */
+const rowLooksLikeMusic = (row: Record<string, unknown>) =>
+  typeof row.songId === 'number' &&
+  Number.isFinite(row.songId) &&
+  typeof row.chartId === 'number' &&
+  Number.isFinite(row.chartId)
+
+const rowLooksLikeAvatarAccessory = (row: Record<string, unknown>) =>
+  typeof row.category === 'number' &&
+  Number.isFinite(row.category) &&
+  !('ddsFile0Path' in row && row.ddsFile0Path !== undefined && String(row.ddsFile0Path).length > 0) &&
+  !rowLooksLikeMusic(row)
+
+const rowLooksLikeCharacterTexture = (row: Record<string, unknown>) =>
+  row.ddsFile0Path !== undefined && String(row.ddsFile0Path ?? '').length > 0
+
+/** Trophy：稀有度为整数；与静态角色区分：奖杯必有 explainText，且无 characterId */
+const rowLooksLikeTrophy = (row: Record<string, unknown>) =>
+  typeof row.rareType === 'number' &&
+  Number.isFinite(row.rareType) &&
+  'explainText' in row &&
+  typeof row.characterId !== 'string' &&
+  !rowLooksLikeCharacterTexture(row)
+
+const rowLooksLikeSystemVoice = (row: Record<string, unknown>) =>
+  typeof row.cuePath === 'string' &&
+  !rowLooksLikeMusic(row) &&
+  !rowLooksLikeAvatarAccessory(row) &&
+  !rowLooksLikeTrophy(row) &&
+  !rowLooksLikeCharacterTexture(row)
+
+/** MapIcon / NamePlate：BaseXmlItemDto（无 category、无 cuePath、trophy 的 explainText）*/
+const rowLooksLikeBaseXmlPlateOrIcon = (row: Record<string, unknown>) =>
+  typeof row.id === 'number' &&
+  Number.isFinite(row.id) &&
+  typeof row.name === 'string' &&
+  typeof row.sortName === 'string' &&
+  typeof row.imagePath === 'string' &&
+  row.category === undefined &&
+  row.rareType === undefined &&
+  row.cuePath === undefined &&
+  row.characterId === undefined &&
+  !rowLooksLikeMusic(row) &&
+  !rowLooksLikeCharacterTexture(row) &&
+  !('explainText' in row)
+
+const rowLooksLikeStaticCharacter = (row: Record<string, unknown>) =>
+  typeof row.characterId === 'string' &&
+  (row.characterId as string).length > 0 &&
+  typeof row.version === 'number' &&
+  Number.isFinite(row.version)
+
+const filterRowsForBatchImport = (
+  batchType: UploadType,
+  allRows: unknown[],
+): Record<string, unknown>[] => {
+  const rows = allRows.filter((r): r is Record<string, unknown> => r != null && typeof r === 'object')
+
+  switch (batchType) {
+    case 'music':
+      return rows.filter(rowLooksLikeMusic)
+    case 'avatar-accessory':
+      return rows.filter(rowLooksLikeAvatarAccessory)
+    case 'trophies':
+      return rows.filter(rowLooksLikeTrophy)
+    case 'system-voice':
+      return rows.filter(rowLooksLikeSystemVoice)
+    case 'map-icon':
+    case 'name-plate':
+      return rows.filter(rowLooksLikeBaseXmlPlateOrIcon)
+    case 'character':
+      return rows.filter(rowLooksLikeStaticCharacter)
+    default:
+      return rows as Record<string, unknown>[]
+  }
 }
 
 // 获取难度名称
@@ -1106,7 +1215,12 @@ const handleTypeChange = (type: string | null) => {
 
 const viewTypeData = async () => {
   if (!selectedUploadType.value) return
-  
+
+  if (selectedUploadType.value === 'character-texture') {
+    ElMessage.info('人物贴图（DDS）仅上传到 R2，数据库无可列表数据')
+    return
+  }
+
   const typeName = UPLOAD_TYPE_LABELS[selectedUploadType.value as UploadType]
   
   try {
@@ -1149,6 +1263,11 @@ const viewTypeData = async () => {
 
 const clearTypeData = async () => {
   if (!selectedUploadType.value) return
+
+  if (selectedUploadType.value === 'character-texture') {
+    ElMessage.info('人物贴图（DDS）无数据库表；如需删除云端文件请到存储控制台操作')
+    return
+  }
   
   const typeName = UPLOAD_TYPE_LABELS[selectedUploadType.value as UploadType]
   
@@ -1446,9 +1565,16 @@ const importParsedData = async () => {
     
     for (const currentType of typesToProcess) {
       try {
+        if (currentType === 'character-texture') {
+          importResults.push(
+            `${UPLOAD_TYPE_LABELS[currentType]}: 已完成解析/R2 同步（不入库）`,
+          )
+          continue
+        }
         // 音乐数据需要传递版本号
         const version = currentType === 'music' ? musicVersion.value : undefined
-        const result = await uploadApi.batchImport(currentType, parseResult.value.data, version)
+        const rows = filterRowsForBatchImport(currentType, parseResult.value!.data)
+        const result = await uploadApi.batchImport(currentType, rows, version)
         importResults.push(`${UPLOAD_TYPE_LABELS[currentType]}: 成功${result.data.success}条`)
       } catch (error: any) {
         importResults.push(`${UPLOAD_TYPE_LABELS[currentType]}: 失败 - ${error.message}`)

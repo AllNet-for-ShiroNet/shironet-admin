@@ -18,8 +18,9 @@ import {
   ChuniSystemVoice,
   ChuniTrophies,
   ChuniStaticMusic,
-  ChuniCharacterImage,
 } from './entities/chuni-static.entity';
+import { ChuniStaticCharacter } from '../chuni/entities/chuni-static-character.entity';
+import { ShironetCharacter } from '../auth/entities/shironet-character.entity';
 import {
   ImportAvatarAccessoryDto,
   ImportMapIconDto,
@@ -34,6 +35,7 @@ import {
   BatchImportTrophiesDto,
   BatchImportMusicDto,
   ImportCharacterDto,
+  ImportChuniStaticCharacterDto,
   BatchImportCharacterDto,
   XmlParseResultDto,
   ImportResultDto,
@@ -67,8 +69,11 @@ export class UploadService {
     @InjectRepository(ChuniStaticMusic)
     private musicRepository: Repository<ChuniStaticMusic>,
 
-    @InjectRepository(ChuniCharacterImage)
-    private characterRepository: Repository<ChuniCharacterImage>,
+    @InjectRepository(ChuniStaticCharacter)
+    private staticCharacterRepository: Repository<ChuniStaticCharacter>,
+
+    @InjectRepository(ShironetCharacter)
+    private shironetCharacterRepository: Repository<ShironetCharacter>,
 
     private readonly configService: ConfigService,
     @Inject(R2_STATICSTOR) private readonly r2Storage: R2StorageService,
@@ -79,7 +84,7 @@ export class UploadService {
    */
   async parseUploadedFiles(
     files: Express.Multer.File[],
-    type: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'character'
+    type: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'character' | 'characterTexture'
   ): Promise<XmlParseResultDto> {
     this.logger.log(`解析上传文件，类型: ${type}, 文件数量: ${files.length}`);
 
@@ -166,7 +171,7 @@ export class UploadService {
 
   /** 与桶内实测及 CDN 路径约定一致：name-plate 在桶根；其余在 R2_KEY_PREFIX_GAME_TREE/{category}/ */
   private buildR2ObjectKey(
-    uploadType: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'character',
+    uploadType: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'characterTexture' | 'character',
     fileBasename: string,
   ): string {
     const platePrefix = (
@@ -191,7 +196,7 @@ export class UploadService {
     if (uploadType === 'namePlate') {
       return `${platePrefix}/${fileBasename}`;
     }
-    if (uploadType === 'character') {
+    if (uploadType === 'characterTexture' || uploadType === 'character') {
       return `${characterPrefix}/${fileBasename}`;
     }
     const cat = categoryByType[uploadType] ?? 'misc';
@@ -209,7 +214,7 @@ export class UploadService {
       const srcBase = this.basenameZip(item.sourceZipPath);
       const destBase = this.basenameZip(item.key);
       for (const row of parsedData) {
-        for (const field of ['imagePath', 'cuePath', 'jacketPath', 'ddsFile0Path', 'ddsFile1Path', 'ddsFile2Path'] as const) {
+        for (const field of ['imagePath', 'cuePath', 'jacketPath', 'ddsFile0Path', 'ddsFile1Path', 'ddsFile2Path', 'imagePath1', 'imagePath2', 'imagePath3'] as const) {
           const v = row[field];
           if (v == null || v === '') continue;
           if (this.basenameZip(String(v)) === srcBase) {
@@ -222,7 +227,7 @@ export class UploadService {
 
   private async syncZipAssetsToR2(
     zipContent: JSZip,
-    uploadType: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'character',
+    uploadType: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'characterTexture' | 'character',
     leafPrefixes: Set<string>,
     parsedData: any[],
   ): Promise<{ uploaded: { key: string; sourceZipPath: string }[]; uploadErrors: string[] }> {
@@ -243,9 +248,17 @@ export class UploadService {
           referencedBasenames.add(this.basenameZip(String(row.jacketPath)));
         }
       }
-    } else if (uploadType === 'character') {
+    } else if (uploadType === 'characterTexture') {
       for (const row of parsedData) {
         for (const key of ['ddsFile0Path', 'ddsFile1Path', 'ddsFile2Path'] as const) {
+          if (row?.[key]) {
+            referencedBasenames.add(this.basenameZip(String(row[key])));
+          }
+        }
+      }
+    } else if (uploadType === 'character') {
+      for (const row of parsedData) {
+        for (const key of ['imagePath1', 'imagePath2', 'imagePath3'] as const) {
           if (row?.[key]) {
             referencedBasenames.add(this.basenameZip(String(row[key])));
           }
@@ -329,7 +342,7 @@ export class UploadService {
    */
   private async parseZipFile(
     buffer: Buffer,
-    type: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'character',
+    type: 'avatarAccessory' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophy' | 'music' | 'character' | 'characterTexture',
   ): Promise<{
     data: any[];
     fileCount: number;
@@ -363,10 +376,78 @@ export class UploadService {
           errors.push(`解析 ZIP 中的 Music.xml 文件失败: ${filename} - ${error.message}`);
         }
       }
+    } else if (type === 'characterTexture') {
+      const parseZipXmlRow = async (
+        filename: string,
+        file: JSZip.JSZipObject,
+      ) => {
+        try {
+          const xmlBuffer = await file.async('nodebuffer');
+          const xmlData = await this.parseXmlFile(xmlBuffer, filename, type);
+          if (xmlData) {
+            data.push(xmlData);
+            fileCount += 1;
+            leafPrefixes.add(this.zipLeafDir(filename));
+          }
+        } catch (error) {
+          this.logger.error(`解析 ZIP 所需的 XML 文件失败: ${filename}`, error);
+          errors.push(
+            `解析 ZIP 所需的 XML 文件失败: ${filename} - ${error.message}`,
+          );
+        }
+      };
+
+      for (const [filenameRaw, file] of Object.entries(zipContent.files)) {
+        if (file.dir) continue;
+        const filename = this.normalizeZipEntryPath(filenameRaw);
+        if (!/\.xml$/i.test(filename)) continue;
+        const lower = filename.toLowerCase();
+        const ddsDeep =
+          /^A\d{3}\/ddsImage\/[^/]+\/DDSImage\.xml$/i.test(filename);
+        const ddsFlat = /^A\d{3}\/DDSImage\.xml$/i.test(filename);
+        const ddsLoose =
+          lower.includes('ddsimage/') && lower.endsWith('/ddsimage.xml');
+        if (ddsDeep || ddsFlat || ddsLoose) {
+          await parseZipXmlRow(filename, file);
+        }
+      }
+    } else if (type === 'character') {
+      const parseZipXmlRow = async (
+        filename: string,
+        file: JSZip.JSZipObject,
+      ) => {
+        try {
+          const xmlBuffer = await file.async('nodebuffer');
+          const xmlData = await this.parseXmlFile(xmlBuffer, filename, type);
+          if (xmlData) {
+            data.push(xmlData);
+            fileCount += 1;
+            leafPrefixes.add(this.zipLeafDir(filename));
+          }
+        } catch (error) {
+          this.logger.error(`解析 ZIP 所需的 XML 文件失败: ${filename}`, error);
+          errors.push(
+            `解析 ZIP 所需的 XML 文件失败: ${filename} - ${error.message}`,
+          );
+        }
+      };
+
+      for (const [filenameRaw, file] of Object.entries(zipContent.files)) {
+        if (file.dir) continue;
+        const filename = this.normalizeZipEntryPath(filenameRaw);
+        if (!/\.xml$/i.test(filename)) continue;
+        const lower = filename.toLowerCase();
+        const charaDeep =
+          /^A\d{3}\/chara\/[^/]+\/Chara\.xml$/i.test(filename);
+        const charaLoose =
+          lower.includes('chara/') && lower.endsWith('/chara.xml');
+        if (charaDeep || charaLoose) {
+          await parseZipXmlRow(filename, file);
+        }
+      }
     } else {
       const folderMapping: Record<string, string> = {
         avatarAccessory: 'avatarAccessory',
-        character: 'ddsImage',
         mapIcon: 'mapIcon',
         namePlate: 'namePlate',
         systemVoice: 'systemVoice',
@@ -427,10 +508,17 @@ export class UploadService {
         this.logger.warn(
           `ZIP 解析 [music] 得到 0 条：需匹配路径 music/music数字/Music.xml。包内 XML 共 ${xmlPaths.length} 个；示例: ${samples}`,
         );
+      } else if (type === 'characterTexture') {
+        this.logger.warn(
+          `ZIP 解析 [characterTexture] 得到 0 条：需 A123/ddsImage/.../DDSImage.xml（或宽松路径含 ddsImage 且文件名 DDSImage.xml）。包内 XML 共 ${xmlPaths.length} 个；示例: ${samples}`,
+        );
+      } else if (type === 'character') {
+        this.logger.warn(
+          `ZIP 解析 [character] 得到 0 条：需 A123/chara/.../Chara.xml（路径含 chara 且文件名 Chara.xml）。包内 XML 共 ${xmlPaths.length} 个；示例: ${samples}`,
+        );
       } else {
         const folderMapping: Record<string, string> = {
           avatarAccessory: 'avatarAccessory',
-          character: 'ddsImage',
           mapIcon: 'mapIcon',
           namePlate: 'namePlate',
           systemVoice: 'systemVoice',
@@ -478,7 +566,7 @@ export class UploadService {
   private getTargetFileName(type: string): string {
     const fileNameMapping = {
       'avatarAccessory': 'AvatarAccessory',
-      'character': 'DDSImage',
+      'characterTexture': 'DDSImage',
       'mapIcon': 'MapIcon',
       'namePlate': 'NamePlate',
       'systemVoice': 'SystemVoice', 
@@ -522,6 +610,9 @@ export class UploadService {
           result = this.extractAvatarAccessoryData(parsed);
           break;
         case 'character':
+          result = this.extractCharaStaticCharacterData(parsed);
+          break;
+        case 'characterTexture':
           result = this.extractCharacterData(parsed);
           break;
         case 'mapIcon':
@@ -694,6 +785,235 @@ export class UploadService {
       };
     } catch (error) {
       this.logger.error('提取人物贴图数据失败', error);
+      return null;
+    }
+  }
+
+  /** Chara.xml 根节点（兼容 xml2js 把根包成单元素数组等情况） */
+  private resolveCharaXmlRoot(parsed: any): any | null {
+    let root = parsed?.CharaData ?? parsed?.charaData;
+    if (!root) {
+      return null;
+    }
+    if (Array.isArray(root) && root.length > 0) {
+      root = root[0];
+    }
+    return root && typeof root === 'object' ? root : null;
+  }
+
+  /** 与客户端一致的 UI 立绘 DDS 文件名：CHU_UI_Character_{seg4}_{mid2}_{slot2}.dds（seg4 为已归一化的 0～9999） */
+  private buildChuniUiCharacterDdsFilename(
+    resolvedSegment: number,
+    middle: number,
+    slotIndex: number,
+  ): string {
+    const seg = String(this.modUnsigned(resolvedSegment, 10000)).padStart(4, '0');
+    const mid = String(this.modUnsigned(middle, 100)).padStart(2, '0');
+    const slot = String(this.modUnsigned(slotIndex, 100)).padStart(2, '0');
+    return `CHU_UI_Character_${seg}_${mid}_${slot}.dds`;
+  }
+
+  private modUnsigned(n: number, modulus: number): number {
+    const t = Math.trunc(Math.abs(n));
+    return ((t % modulus) + modulus) % modulus;
+  }
+
+  /**
+   * defaultImages.str / path 形如 chara5095_00 → 资源首段 5095（与游戏命名一致，而非 50950%10000）
+   */
+  private parseCharaUiSegmentFromDefaultStr(s: string | null | undefined): number | null {
+    if (!s || typeof s !== 'string') {
+      return null;
+    }
+    const m = s.trim().match(/^chara(\d+)_(\d{1,4})(?:\.dds)?$/i);
+    if (!m) {
+      return null;
+    }
+    return this.modUnsigned(parseInt(m[1], 10), 10000);
+  }
+
+  /**
+   * 无 charaXXXX_XX 字符串时的数值推导：50950 → 5095；2398 → 2398
+   */
+  private segmentFromCharaNumericId(rawId: number): number {
+    const id = Math.trunc(Math.abs(rawId));
+    if (id <= 0) {
+      return 0;
+    }
+    if (id >= 10000) {
+      return this.modUnsigned(Math.floor(id / 10), 10000);
+    }
+    return this.modUnsigned(id, 10000);
+  }
+
+  /** 从 defaultImages.str（如 chara5095_00）解析中间两位所用的序号 */
+  private parseCharaCostumeMiddleFromDefaultStr(s: string | null | undefined): number {
+    if (!s || typeof s !== 'string') {
+      return 0;
+    }
+    const m = s.trim().match(/_(\d{1,4})(?:\.dds)?$/i);
+    return m ? this.modUnsigned(parseInt(m[1], 10), 100) : 0;
+  }
+
+  private looksLikeChuniUiCharacterDds(name: string): boolean {
+    return /^CHU_UI_Character_\d{4}_\d{2}_\d{2}\.dds$/i.test(name.trim());
+  }
+
+  private normalizeChuniUiFilenameFromXml(raw: string): string | null {
+    const t = raw.trim();
+    return this.looksLikeChuniUiCharacterDds(t) ? t : null;
+  }
+
+  private getCharaAddImageBlock(root: any, index: number): any | null {
+    const key = `addImages${index}`;
+    const blockRaw = root[key];
+    const block = Array.isArray(blockRaw) ? blockRaw[0] : blockRaw;
+    return block && typeof block === 'object' ? block : null;
+  }
+
+  /** addImagesN.image.id，无效（≤0）时返回 null */
+  private getCharaAddImageNumericId(root: any, addIndex: number): number | null {
+    const block = this.getCharaAddImageBlock(root, addIndex);
+    if (!block) {
+      return null;
+    }
+    const id = this.extractValue(block, ['image', 'id'], 'number');
+    if (id == null || id <= 0) {
+      return null;
+    }
+    return id;
+  }
+
+  /** addImages 里已是 CHU_UI_Character_*.dds 时直接采用 */
+  private extractChuniUiFilenameFromAddImageBlock(block: any): string | null {
+    if (!block) {
+      return null;
+    }
+    const raw =
+      (this.extractValue(block, ['image', 'str'], 'string') || '').trim() ||
+      (this.extractValue(block, ['image', 'path'], 'string') || '').trim();
+    if (!raw || raw.toLowerCase() === 'invalid') {
+      return null;
+    }
+    return this.normalizeChuniUiFilenameFromXml(raw);
+  }
+
+  private extractCharaStaticCharacterData(
+    parsed: any,
+  ): ImportChuniStaticCharacterDto | null {
+    try {
+      const root = this.resolveCharaXmlRoot(parsed);
+      if (!root) {
+        return null;
+      }
+
+      const nameIdNum = this.extractValue(root, ['name', 'id'], 'number') || 0;
+      const dataName =
+        (this.extractValue(root, ['dataName'], 'string') || '').trim();
+      const characterId =
+        nameIdNum > 0 ? String(nameIdNum) : dataName;
+      if (!characterId) {
+        return null;
+      }
+
+      const version =
+        this.extractValue(root, ['releaseTagName', 'id'], 'number') ||
+        this.extractValue(root, ['netOpenName', 'id'], 'number') ||
+        0;
+
+      const name = this.extractValue(root, ['name', 'str'], 'string') || '';
+      const sortName =
+        (this.extractValue(root, ['sortName'], 'string') || '').trim() || null;
+      const worksName =
+        (this.extractValue(root, ['works', 'str'], 'string') || '').trim() ||
+        null;
+
+      const rareNum = this.extractValue(root, ['rareType'], 'number');
+      const rareStr = this.extractValue(root, ['rareType'], 'string');
+      const rareType =
+        rareStr !== '' && rareStr != null
+          ? String(rareStr).trim()
+          : rareNum != null && !Number.isNaN(Number(rareNum))
+            ? String(rareNum)
+            : null;
+
+      const defaultStr =
+        (this.extractValue(root, ['defaultImages', 'str'], 'string') || '').trim() ||
+        (this.extractValue(root, ['defaultImages', 'path'], 'string') || '').trim() ||
+        '';
+
+      const segmentFromStr = this.parseCharaUiSegmentFromDefaultStr(defaultStr);
+      const baseSegRaw =
+        this.extractValue(root, ['defaultImages', 'id'], 'number') ||
+        nameIdNum ||
+        0;
+
+      const middle = this.parseCharaCostumeMiddleFromDefaultStr(defaultStr);
+
+      const explicit1 = defaultStr
+        ? this.normalizeChuniUiFilenameFromXml(defaultStr)
+        : null;
+
+      const seg0 = segmentFromStr ?? this.segmentFromCharaNumericId(baseSegRaw);
+
+      const id1 = this.getCharaAddImageNumericId(root, 1);
+      const id2 = this.getCharaAddImageNumericId(root, 2);
+      const segForSlot1 =
+        id1 != null ? this.segmentFromCharaNumericId(id1) : seg0;
+      const segForSlot2 =
+        id2 != null ? this.segmentFromCharaNumericId(id2) : seg0;
+
+      const imagePath1 =
+        explicit1 ??
+        this.buildChuniUiCharacterDdsFilename(seg0, middle, 0);
+
+      const imagePath2 =
+        this.extractChuniUiFilenameFromAddImageBlock(
+          this.getCharaAddImageBlock(root, 1),
+        ) ??
+        this.buildChuniUiCharacterDdsFilename(segForSlot1, middle, 1);
+
+      const imagePath3 =
+        this.extractChuniUiFilenameFromAddImageBlock(
+          this.getCharaAddImageBlock(root, 2),
+        ) ??
+        this.buildChuniUiCharacterDdsFilename(segForSlot2, middle, 2);
+
+      const disableRaw = (
+        this.extractValue(root, ['disableFlag'], 'string') || ''
+      ).trim().toLowerCase();
+      const isEnabled =
+        disableRaw === 'true' || disableRaw === '1'
+          ? false
+          : disableRaw === 'false' || disableRaw === '0' || disableRaw === ''
+            ? true
+            : null;
+
+      const dhRaw = (
+        this.extractValue(root, ['defaultHave'], 'string') || ''
+      ).trim().toLowerCase();
+      let defaultHave: boolean | null = null;
+      if (dhRaw === 'true' || dhRaw === '1') {
+        defaultHave = true;
+      } else if (dhRaw === 'false' || dhRaw === '0') {
+        defaultHave = false;
+      }
+
+      return {
+        characterId,
+        version,
+        name: name || characterId,
+        sortName,
+        worksName,
+        rareType,
+        imagePath1,
+        imagePath2,
+        imagePath3,
+        isEnabled,
+        defaultHave,
+      };
+    } catch (error) {
+      this.logger.error('提取 CharaData 静态角色失败', error);
       return null;
     }
   }
@@ -1222,50 +1542,65 @@ export class UploadService {
   }
 
   /**
-   * 批量导入人物贴图数据
+   * 批量导入静态角色（Chara.xml → chuni_static_character）
    */
   async batchImportCharacter(batchData: BatchImportCharacterDto): Promise<ImportResultDto> {
-    this.logger.log(`批量导入人物贴图，数量: ${batchData.data.length}`);
+    if (!batchData.data?.length) {
+      throw new BadRequestException('角色静态导入：data 不能为空');
+    }
 
     let success = 0;
     let failed = 0;
-    let skipped = 0;
+    const skipped = 0;
     const errors: string[] = [];
 
     for (const item of batchData.data) {
       try {
-        await this.characterRepository
+        await this.staticCharacterRepository
           .createQueryBuilder()
           .insert()
-          .into(ChuniCharacterImage)
+          .into(ChuniStaticCharacter)
           .values({
-            id: item.id,
+            characterId: item.characterId,
+            version: item.version,
             name: item.name,
-            dataName: item.dataName,
-            ddsFile0Path: item.ddsFile0Path,
-            ddsFile1Path: item.ddsFile1Path ?? '',
-            ddsFile2Path: item.ddsFile2Path ?? '',
-            netOpenId: item.netOpenId ?? 0,
-            netOpenName: item.netOpenName ?? '',
+            sortName: item.sortName ?? null,
+            worksName: item.worksName ?? null,
+            rareType: item.rareType ?? null,
+            imagePath1: item.imagePath1 ?? null,
+            imagePath2: item.imagePath2 ?? null,
+            imagePath3: item.imagePath3 ?? null,
+            isEnabled: item.isEnabled ?? null,
+            defaultHave: item.defaultHave ?? null,
           })
           .orUpdate(
             [
+              'version',
               'name',
-              'dataName',
-              'ddsFile0Path',
-              'ddsFile1Path',
-              'ddsFile2Path',
-              'netOpenId',
-              'netOpenName',
+              'sortName',
+              'worksName',
+              'rareType',
+              'imagePath1',
+              'imagePath2',
+              'imagePath3',
+              'isEnabled',
+              'defaultHave',
             ],
-            ['id'],
+            ['characterId'],
           )
           .execute();
 
+        await this.upsertShironetCharacterFromStatic(item);
+
         success++;
       } catch (error) {
-        this.logger.error(`导入人物贴图失败 ID: ${item.id}`, error);
-        errors.push(`导入人物贴图失败 ID: ${item.id} - ${error.message}`);
+        this.logger.error(
+          `导入静态角色失败 characterId: ${item.characterId}`,
+          error,
+        );
+        errors.push(
+          `导入静态角色失败 characterId: ${item.characterId} - ${error.message}`,
+        );
         failed++;
       }
     }
@@ -1280,12 +1615,50 @@ export class UploadService {
   }
 
   /**
+   * aime 库 shironet_characters：按 characterId 幂等同步（与 chuni_static_character 同库）
+   */
+  private async upsertShironetCharacterFromStatic(
+    item: ImportChuniStaticCharacterDto,
+  ): Promise<void> {
+    const characterId = item.characterId.slice(0, 50);
+    const characterName = item.name.slice(0, 100);
+    const version = String(item.version ?? '').slice(0, 50);
+
+    const existing = await this.shironetCharacterRepository.findOne({
+      where: { characterId },
+    });
+
+    if (existing) {
+      existing.characterName = characterName;
+      existing.version = version;
+      await this.shironetCharacterRepository.save(existing);
+      return;
+    }
+
+    await this.shironetCharacterRepository.save(
+      this.shironetCharacterRepository.create({
+        characterId,
+        characterName,
+        version,
+      }),
+    );
+  }
+
+  /**
    * 获取导入统计信息
    */
   async getImportStats(): Promise<any> {
-    const [avatarAccessoryCount, characterCount, mapIconCount, namePlateCount, systemVoiceCount, trophiesCount, musicCount] = await Promise.all([
+    const [
+      avatarAccessoryCount,
+      staticCharacterCount,
+      mapIconCount,
+      namePlateCount,
+      systemVoiceCount,
+      trophiesCount,
+      musicCount,
+    ] = await Promise.all([
       this.avatarAccessoryRepository.count(),
-      this.characterRepository.count(),
+      this.staticCharacterRepository.count(),
       this.mapIconRepository.count(),
       this.namePlateRepository.count(),
       this.systemVoiceRepository.count(),
@@ -1295,13 +1668,20 @@ export class UploadService {
 
     return {
       avatarAccessory: avatarAccessoryCount,
-      character: characterCount,
+      character: staticCharacterCount,
       mapIcon: mapIconCount,
       namePlate: namePlateCount,
       systemVoice: systemVoiceCount,
       trophies: trophiesCount,
       music: musicCount,
-      total: avatarAccessoryCount + characterCount + mapIconCount + namePlateCount + systemVoiceCount + trophiesCount + musicCount,
+      total:
+        avatarAccessoryCount +
+        staticCharacterCount +
+        mapIconCount +
+        namePlateCount +
+        systemVoiceCount +
+        trophiesCount +
+        musicCount,
     };
   }
 
@@ -1315,38 +1695,44 @@ export class UploadService {
   ): Promise<{ data: any[]; total: number }> {
     const skip = (page - 1) * pageSize;
     
+    if (type === 'character-texture') {
+      return { data: [], total: 0 };
+    }
+
     let repository: Repository<any>;
-    
-    // 映射类型到对应的仓库
+
     const typeMap = {
       'avatar-accessory': this.avatarAccessoryRepository,
-      'character': this.characterRepository,
+      'character': this.staticCharacterRepository,
       'map-icon': this.mapIconRepository,
       'name-plate': this.namePlateRepository,
       'system-voice': this.systemVoiceRepository,
       'trophies': this.trophiesRepository,
       'music': this.musicRepository,
     };
-    
+
     repository = typeMap[type];
-    
+
     if (!repository) {
       throw new BadRequestException(`不支持的数据类型: ${type}`);
     }
-    
+
+    const order =
+      type === 'character' ? { characterId: 'ASC' as const } : { id: 'ASC' as const };
+
     const [data, total] = await repository.findAndCount({
       skip,
       take: pageSize,
-      order: { id: 'ASC' },
+      order,
     });
-    
+
     return { data, total };
   }
 
   /**
    * 清空指定类型的数据
    */
-  async clearData(type: 'avatarAccessory' | 'character' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophies' | 'music'): Promise<void> {
+  async clearData(type: 'avatarAccessory' | 'character' | 'characterTexture' | 'mapIcon' | 'namePlate' | 'systemVoice' | 'trophies' | 'music'): Promise<void> {
     this.logger.log(`清空数据类型: ${type}`);
     
     try {
@@ -1357,8 +1743,11 @@ export class UploadService {
         case 'mapIcon':
           await this.mapIconRepository.clear();
           break;
+        case 'characterTexture':
+          this.logger.log('人物贴图（DDS）仅同步 R2，无数据库表可清空');
+          break;
         case 'character':
-          await this.characterRepository.clear();
+          await this.staticCharacterRepository.clear();
           break;
         case 'namePlate':
           await this.namePlateRepository.clear();

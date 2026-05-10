@@ -1,8 +1,18 @@
 // src/chuni/entities/chuni-item.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  Index,
+} from 'typeorm';
 import { AimeUser } from '../../user/entities/aime-user.entity';
 
 @Entity('chuni_item_item')
+@Index('chuni_item_item_uk', ['userId', 'itemId', 'itemKind'], { unique: true })
+@Index('idx_user', ['userId'])
+@Index('idx_item', ['itemId', 'itemKind'])
 export class ChuniItem {
   @PrimaryGeneratedColumn()
   id: number;
